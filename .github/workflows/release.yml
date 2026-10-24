@@ -10,7 +10,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: npm test
       - run: node dev/build.mjs
       - run: cd dist && zip -r "../labelboard-${GITHUB_REF_NAME}.zip" .
