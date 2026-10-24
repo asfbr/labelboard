@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.clasp.json
+# Mail data never lives in the repo: snapshots, configs and seeds stay in ~/.labelboard
+*.snapshot.json
+snapshot.json
+config.local.json
+.playwright-mcp/

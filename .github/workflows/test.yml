@@ -1,0 +1,9 @@
+# npm test on every push and pull request; the README's tests badge reads this workflow.
+name: Tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test

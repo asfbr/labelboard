@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="128" height="128" role="img" aria-label="Labelboard">
+  <!-- Animated mark: an "L" picks up the label tag and becomes "b", then lets go. Still under reduced motion. -->
+  <style>
+    .ink{fill:#1d2230}.acc{fill:#6247d6}@media (prefers-color-scheme:dark){.ink{fill:#f1efe9}.acc{fill:#a896ff}}
+    .tag{animation:merge 4.8s cubic-bezier(.6,0,.2,1) infinite;transform-box:view-box;transform-origin:19px 20px}
+    @keyframes merge{0%,12%{transform:translate(5px,-9px) rotate(-18deg)}38%,70%{transform:none}92%,100%{transform:translate(5px,-9px) rotate(-18deg)}}
+    @media (prefers-reduced-motion:reduce){.tag{animation:none}}
+  </style>
+  <rect class="ink" x="5" y="3" width="5.5" height="26" rx="1.5"/>
+  <rect class="ink" x="5" y="23.5" width="10" height="5.5" rx="1.5"/>
+  <g class="tag"><path class="acc" fill-rule="evenodd" d="M13 13.5h8.2a1.6 1.6 0 0 1 1.3.7l4.3 6.1a1.4 1.4 0 0 1 0 1.6l-4.3 6.1a1.6 1.6 0 0 1-1.3.7H13a1 1 0 0 1-1-1V14.5a1 1 0 0 1 1-1Zm9.2 7.6a1.9 1.9 0 1 0-3.8 0a1.9 1.9 0 1 0 3.8 0Z"/></g>
+</svg>

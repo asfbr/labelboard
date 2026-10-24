@@ -1,0 +1,25 @@
+{
+ "preset": "investor",
+ "patterns": [
+  { "key": "calendar-replies", "title": "Calendar replies", "bucket": "calendar", "subjects": ["Accepted:", "Declined:", "Tentatively accepted:"] },
+  { "key": "invitations", "title": "Meeting invitations", "bucket": "keep", "subjects": ["Invitation:", "Updated invitation:"] }
+ ],
+ "processes": [
+  { "bucket": "mna", "title": "sale process", "folder": "Deals", "from": ["portfolio"],
+    "words": ["M&A", "NBO", "LOI", "SPA", "escrow", "data room", "due diligence", "binding", "teaser", "earn-out", "closing"] }
+ ],
+ "newsletterDomains": ["news.pitchbook.com", "strictlyvc.com"],
+ "buckets": [
+  { "id": "unsorted", "name": "Unsorted", "label": null, "description": "No rule yet. Drag each card where it belongs." },
+  { "id": "portfolio", "name": "Portfolio", "label": "_Portfolio", "archive": false, "subLabels": true, "topics": true, "color": { "backgroundColor": "#4a86e8", "textColor": "#ffffff" }, "description": "Founders, boards, rounds, reports" },
+  { "id": "dealflow", "name": "Dealflow", "label": "_Dealflow", "archive": true, "color": { "backgroundColor": "#16a766", "textColor": "#ffffff" }, "description": "New opportunities and replies to founders" },
+  { "id": "mna", "name": "M&A", "label": "_M&A", "archive": false, "subLabels": true, "color": { "backgroundColor": "#8e63ce", "textColor": "#ffffff" }, "description": "Selling portfolio companies: buyers, advisors, transactions" },
+  { "id": "deals", "name": "Other deals", "label": "_Deals", "archive": false, "subLabels": true, "topics": true, "newTopics": true, "color": { "backgroundColor": "#ffad47", "textColor": "#000000" }, "description": "SPVs and co-investments" },
+  { "id": "funds", "name": "VC relationships", "label": "_Funds", "archive": false, "color": { "backgroundColor": "#2a9c68", "textColor": "#ffffff" }, "description": "Other VCs and LPs when no company or deal is named" },
+  { "id": "calendar", "name": "Calendar replies", "label": "_Calendar", "archive": true, "automated": true, "color": { "backgroundColor": "#999999", "textColor": "#ffffff" }, "description": "Accepted / declined notices" },
+  { "id": "tools", "name": "Tools & notifications", "label": "_Tools", "archive": true, "automated": true, "color": { "backgroundColor": "#fad165", "textColor": "#000000" } },
+  { "id": "newsletters", "name": "Newsletters", "label": "_Newsletters", "archive": true, "automated": true, "color": { "backgroundColor": "#f691b3", "textColor": "#000000" }, "description": "Reading, not acting" },
+  { "id": "vdr", "name": "Data rooms", "label": "_Data rooms", "archive": true, "automated": true, "color": { "backgroundColor": "#cccccc", "textColor": "#000000" }, "description": "Data room notifications" },
+  { "id": "keep", "name": "Keep in inbox", "label": null, "description": "No label, no filter: these stay where they are." }
+ ]
+}

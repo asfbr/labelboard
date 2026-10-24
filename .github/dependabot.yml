@@ -1,0 +1,7 @@
+# The only dependencies are the actions the workflows use; npm has none.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

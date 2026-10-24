@@ -1,0 +1,21 @@
+# Push a tag like v0.0.18: runs the tests, builds dist/ and attaches it as a zip to a GitHub release,
+# for the no-terminal install (paste the files into a new Apps Script project, docs/INSTALL.md).
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+      - run: node dev/build.mjs
+      - run: cd dist && zip -r "../labelboard-${GITHUB_REF_NAME}.zip" .
+      # notes: this tag's section of CHANGELOG.md ("## v0.0.22 · …" up to the next "## ")
+      - run: awk -v v="## $GITHUB_REF_NAME " 'index($0, v) == 1 { p = 1; next } /^## / { p = 0 } p' CHANGELOG.md > notes.md
+      - run: gh release create "$GITHUB_REF_NAME" "labelboard-${GITHUB_REF_NAME}.zip" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
