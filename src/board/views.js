@@ -3,7 +3,7 @@
 window.LabelboardViews = function (ctx) {
   'use strict';
   var S = ctx.S, I = window.LabelboardInsights, R = window.LabelboardRules, $ = ctx.$, h = ctx.h, fmt = ctx.fmt, plural = ctx.plural;
-  var NAMES = { home: 'Home', board: 'Board', flow: 'Flow', filters: 'Filters', overview: 'Overview', threads: 'All threads', priorities: 'Priorities' };
+  var NAMES = { home: 'Home', board: 'Board', flow: 'Flow', filters: 'Filters', overview: 'Overview', threads: 'All threads', priorities: 'Priorities', labels: 'Labels' };
   var OUT = { labelled: 'Stays in the inbox, labelled', stays: 'Stays in the inbox, no label', skip: 'Skips the inbox', out: 'Archived already' };
   var tips = {}, tipSeq = 0; // tooltip HTML by id, rebuilt on every render
   var colorOf = function (id) { var b = ctx.bucket(id); return ctx.bandOf(b) || (b && b.id !== 'unsorted' ? 'var(--muted)' : 'var(--hatch)'); }; // as the rack

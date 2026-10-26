@@ -170,7 +170,8 @@ window.LabelboardSettings = function (B) {
     });
     Object.keys(map).forEach(function (k) { if (!(k in counts)) counts[k] = 0; });
     var rows = Object.keys(counts).sort(function (x, z) { return counts[z] - counts[x] || x.localeCompare(z); });
-    return '<p class="note">Mail you already labelled helps place cards: a card whose threads mostly carry a label goes to that label\'s column. Each column\'s own label counts by itself; pick a column for the others.</p>' +
+    return '<p class="note">Mail you already labelled helps place cards: a card whose threads mostly carry a label goes to that label\'s column. Each column\'s own label counts by itself; pick a column for the others. ' +
+      'To fold one of these labels into a column, or hand it to the board, open the Labels view.</p>' +
       (rows.length ? '<table class="plan-table"><thead><tr><th>Label</th><th>Inbox threads</th><th>Counts toward</th></tr></thead><tbody>' + rows.map(function (l) {
         return '<tr><td>' + h(l) + (own[l] ? ' <span class="note">(a column\'s label)</span>' : '') + '</td><td class="n">' + fmt(counts[l]) + '</td><td>' +
           columnSelect('data-labelmap="' + h(l) + '" aria-label="Column for ' + h(l) + '"', map[l] || '', 'Nothing') + '</td></tr>';

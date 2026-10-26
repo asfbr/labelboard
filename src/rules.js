@@ -558,7 +558,7 @@ var LabelboardRules = (function () {
   // gmail: the ownedLabels (optional). apply: what Apply changes, thread by thread (threadChange), and how many
   // inbox threads Gmail already has sorted the way the board says (a label and nothing to change).
   function stats(snapshot, built, config, gmail) {
-    var ctx = placeCtx(built, config), owned = gmail && gmail.ownedLabels;
+    var ctx = placeCtx(built, config), owned = resortable(gmail);
     var inbox = snapshot.threads.filter(function (t) { return t.labels.indexOf('INBOX') >= 0; });
     var after = { inbox: 0, byBucket: {}, archivedByBucket: {}, unsortedInInbox: 0 }, apply = { byThread: {}, threads: 0, add: 0, leave: 0, off: 0, sorted: 0 };
     inbox.forEach(function (t) {
@@ -571,6 +571,12 @@ var LabelboardRules = (function () {
       else if (pl.labelled) apply.sorted++;
     });
     return { before: { inbox: inbox.length, threads: snapshot.threads.length }, after: after, apply: apply };
+  }
+  // Labels re-sorting may take off inbox threads: Labelboard's own, not labels of yours it took as they are (adoptedLabels):
+  // those carry mail no card gives, and would all come off.
+  function resortable(gmail) {
+    var adopted = (gmail && gmail.adoptedLabels) || [];
+    return ((gmail && gmail.ownedLabels) || []).filter(function (l) { return adopted.indexOf(l) < 0; });
   }
   // pf (optional): planFilters(built, config), when the caller has it already
   function placeCtx(built, config, pf) {
@@ -732,7 +738,7 @@ var LabelboardRules = (function () {
       if (!byLabel[k]) {
         byLabel[k] = { label: name, archive: acts.indexOf('a') >= 0, threadIds: [] };
         if (acts.indexOf('r') >= 0) byLabel[k].read = true;
-        if (!named[name]) { named[name] = true; labels.push({ name: name, color: b.color || null }); }
+        if (!named[name]) { named[name] = true; labels.push({ name: name, color: labelColor(name, config) }); }
       }
       byLabel[k].threadIds.push(id); (has[name] = has[name] || Object.create(null))[id] = true;
     }
@@ -744,14 +750,14 @@ var LabelboardRules = (function () {
     var backfill = Object.keys(byLabel).sort().map(function (n) { return byLabel[n]; });
     // Re-sort: a label Labelboard created that a thread carries but the board no longer gives it comes off
     // (a card moved, a column renamed). Labels you made are never taken off.
-    var owned = (gmail && gmail.ownedLabels) || [], off = {}, isOwned = Object.create(null);
+    var owned = resortable(gmail), off = {}, isOwned = Object.create(null);
     owned.forEach(function (l) { isOwned[l] = true; });
     if (owned.length) inbox.forEach(function (t) {
       t.labels.forEach(function (l) {
         if (isOwned[l] === true && !got(l, t.id)) (off[l] = off[l] || { label: l, threadIds: [] }).threadIds.push(t.id);
       });
     });
-    labels.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    withParents(labels, config).sort(function (a, b) { return a.name.localeCompare(b.name); });
     return { labels: labels, filters: filters, backfill: backfill, unlabel: Object.keys(off).sort().map(function (l) { return off[l]; }), later: laterRules(built, config) };
   }
   // What a card puts in its column's filter: nothing for unsorted / keep-in-inbox / unplaced context.
@@ -791,15 +797,7 @@ var LabelboardRules = (function () {
       });
       groups[gk].cards.push(c.key);
     }
-    // Seeded entities that have no mail yet still get rules: future mail is the point.
-    var all = built.cards.slice(), isCard = Object.create(null);
-    all.forEach(function (c) { isCard[c.key] = true; });
-    Object.keys(built.entities || {}).forEach(function (k) {
-      if (!isCard[k]) {
-        var e = clone(built.entities[k]); e.threads = []; e.also = 0; e.suggestion = suggest(e, {}, config); all.push(e);
-      }
-    });
-    all.forEach(function (c) {
+    allCards(built, config).forEach(function (c) {
       var p = placement(c, config), b = buckets[p.bucket], terms = ruleTerms(c, p, b);
       if (!terms.length) return;
       var own = c.must && c.must.length ? c : null, d = cardDoes(c, config, b);
@@ -811,7 +809,7 @@ var LabelboardRules = (function () {
     var labels = [], filters = [];
     Object.keys(groups).sort().forEach(function (gk) {
       var g = groups[gk];
-      if (!labels.some(function (l) { return l.name === g.label; })) labels.push({ name: g.label, color: g.color || null });
+      if (!labels.some(function (l) { return l.name === g.label; })) labels.push({ name: g.label, color: labelColor(g.label, config) });
       groupQueries(g).forEach(function (q, i) {
         var f = { id: 'mb:' + gk + ':' + i, label: g.label, bucket: g.bucket, query: q, archive: g.archive };
         ['read', 'star', 'important', 'trash'].forEach(function (k) { if (g[k]) f[k] = g[k]; });
@@ -824,9 +822,64 @@ var LabelboardRules = (function () {
       var a = config.adopted[id], b = bucketOfLabel(a.label, config);
       if (a.off || !a.query || !a.label) return;
       filters.push({ id: 'adopted:' + id, label: a.label, bucket: b ? b.id : null, query: a.query, archive: !!a.archive });
-      if (!labels.some(function (l) { return l.name === a.label; })) labels.push({ name: a.label, color: b && b.color || null });
+      if (!labels.some(function (l) { return l.name === a.label; })) labels.push({ name: a.label, color: labelColor(a.label, config) });
     });
-    return { labels: labels, filters: filters, groups: groups };
+    return { labels: withParents(labels, config), filters: filters, groups: groups };
+  }
+  // Seeded entities that have no mail yet count too: future mail is the point.
+  function allCards(built, config) {
+    var all = built.cards.slice(), isCard = Object.create(null);
+    all.forEach(function (c) { isCard[c.key] = true; });
+    Object.keys(built.entities || {}).forEach(function (k) {
+      if (!isCard[k]) {
+        var e = clone(built.entities[k]); e.threads = []; e.also = 0; e.suggestion = suggest(e, {}, config); all.push(e);
+      }
+    });
+    return all;
+  }
+  // Folders in between (`_Portfolio/Fund I` for `_Portfolio/Fund I/Acme`) are labels Gmail makes too: they get their colour here.
+  function withParents(labels, config) {
+    var named = Object.create(null);
+    labels.forEach(function (l) { named[l.name] = true; });
+    labels.slice().forEach(function (l) {
+      var p = l.name.split('/');
+      for (var i = p.length - 1; i > 0; i--) {
+        var n = p.slice(0, i).join('/');
+        if (!named[n] && bucketOfLabel(n, config)) { named[n] = true; labels.push({ name: n, color: labelColor(n, config) }); }
+      }
+    });
+    return labels;
+  }
+
+  // ---------- label colours ----------
+  // Gmail takes label colours from its palette only, 8 × 8: row 0 greys; in rows 1–7 each column is one hue,
+  // row 2 its lightest and row 7 its darkest.
+  var PALETTE = ['#000000', '#434343', '#666666', '#999999', '#cccccc', '#efefef', '#f3f3f3', '#ffffff',
+    '#fb4c2f', '#ffad47', '#fad165', '#16a766', '#43d692', '#4a86e8', '#a479e2', '#f691b3',
+    '#f6c5be', '#ffe6c7', '#fef1d1', '#b9e4d0', '#c6f3de', '#c9daf8', '#e4d7f5', '#fcdee8',
+    '#efa093', '#ffd6a2', '#fce8b3', '#89d3b2', '#a0eac9', '#a4c2f4', '#d0bcf1', '#fbc8d9',
+    '#e66550', '#ffbc6b', '#fcda83', '#44b984', '#68dfa9', '#6d9eeb', '#b694e8', '#f7a7c0',
+    '#cc3a21', '#eaa041', '#f2c960', '#149e60', '#3dc789', '#3c78d8', '#8e63ce', '#e07798',
+    '#ac2b16', '#cf8933', '#d5ae49', '#0b804b', '#2a9c68', '#285bac', '#653e9b', '#b65775',
+    '#822111', '#a46a21', '#aa8831', '#076239', '#1a764d', '#1c4587', '#41236d', '#83334c'];
+  function rgbOf(hex) { var c = String(hex || '').replace('#', ''); return [0, 2, 4].map(function (i) { return parseInt(c.substr(i, 2), 16) || 0; }); }
+  // The palette entry closest to a colour (Gmail also keeps a few older colours outside the palette, such as #c2c2c2).
+  function paletteIndex(hex) {
+    var i = PALETTE.indexOf(String(hex || '').toLowerCase()); if (i >= 0) return i;
+    var c = rgbOf(hex), best = 0, d = Infinity;
+    PALETTE.forEach(function (p, j) { var q = rgbOf(p), e = Math.pow(q[0] - c[0], 2) + Math.pow(q[1] - c[1], 2) + Math.pow(q[2] - c[2], 2); if (e < d) { d = e; best = j; } });
+    return best;
+  }
+  // A sub-label's colour: its column's hue at its lightest, with the darkest as text (a grey column: light grey).
+  function shadeOf(color) {
+    if (!color || !color.backgroundColor) return null;
+    var i = paletteIndex(color.backgroundColor), col = i % 8;
+    return i < 8 ? { backgroundColor: '#efefef', textColor: '#434343' } : { backgroundColor: PALETTE[16 + col], textColor: PALETTE[56 + col] };
+  }
+  // The colour a label gets in Gmail: the column's own label its colour, everything under it the light shade.
+  function labelColor(name, config) {
+    var b = bucketOfLabel(name, config);
+    return !b || !b.color ? null : name === b.label ? b.color : shadeOf(b.color);
   }
   // The column a Gmail label belongs to: its own label or one under it.
   function bucketOfLabel(name, config) {
@@ -1017,7 +1070,8 @@ var LabelboardRules = (function () {
 
   return {
     addr: addr, domainOf: domainOf, addrMatches: addrMatches, phraseIn: phraseIn,
-    labelMapOf: labelMapOf, bucketOfLabel: bucketOfLabel, parseQuery: parseQuery, gmailFilters: gmailFilters, readAge: readAge,
+    labelMapOf: labelMapOf, bucketOfLabel: bucketOfLabel, bucketById: bucketById, labelName: labelName, allCards: allCards,
+    PALETTE: PALETTE, rgbOf: rgbOf, paletteIndex: paletteIndex, shadeOf: shadeOf, labelColor: labelColor, parseQuery: parseQuery, gmailFilters: gmailFilters, readAge: readAge,
     termMatches: termMatches, termQuery: termQuery, chunkQueries: chunkQueries,
     buildCards: buildCards, suggest: suggest, bucketForLabel: bucketForLabel,
     cardDoes: cardDoes, colActs: colActs, whenOf: whenOf, whenMatches: whenMatches, whenQuery: whenQuery, laterOf: laterOf, laterRules: laterRules, actionHint: actionHint,

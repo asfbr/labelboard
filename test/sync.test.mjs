@@ -205,7 +205,7 @@ test('undoing one Apply takes off its labels, puts back the inbox and the labels
   assert.deepEqual(p.since, ['_News'], 'only labels whose new filter skips the inbox');
   assert.equal(p.after, 1000);
   assert.deepEqual(S.planUndo([e], true).filters.restore, [], 'Remove everything makes nothing again');
-  assert.deepEqual(S.undoCounts(p), { threads: 5, unlabel: 3, inbox: 2, relabel: 1, unread: 0 });
+  assert.deepEqual(S.undoCounts(p), { threads: 5, unlabel: 3, inbox: 2, relabel: 1, unread: 0, moved: 0 });
 });
 
 test('undoing several Applies, newest first, ends where the oldest started', () => {
@@ -283,6 +283,29 @@ test('undo of a deleting filter brings its mail out of the trash; timed rules go
   assert.deepEqual(plan.later, e.later);
   assert.deepEqual(S.planUndo([e], true).later, []);
   assert.equal(S.planUndo([{ at: 1, labelled: {} }]).later, null); // an Apply from before timed rules: left alone
+});
+
+test('moved labels undo newest first: messages get their label back, lose the new one only if they didn\'t have it, 1000 per call', () => {
+  const ids = Array.from({ length: 1203 }, (_, i) => 'm' + i), had = ['m0', 'm1'];
+  const older = { at: 1, labelled: {}, moved: [{ from: 'Portfolio/V1', to: '_Portfolio/V1', ids: ['p1'], had: [], owned: false }], labelsAdopted: ['Household'] };
+  const newer = { at: 2, labelled: {}, moved: [{ from: 'Portfolio', to: '_Portfolio', ids, had, owned: false }, { from: '_Gone', to: null, ids: [], had: [], owned: true }] };
+  const plan = S.planUndo([newer, older]);
+  assert.deepEqual(plan.moves.map((m) => m.from), ['_Gone', 'Portfolio', 'Portfolio/V1'], 'the last move of the newest Apply first');
+  assert.deepEqual(plan.handBack, ['Household']);
+  const ops = S.unmoveOps(plan.moves);
+  assert.deepEqual(ops.map((o) => [o.from, o.ids.length, o.keepTo]), [['Portfolio', 1000, false], ['Portfolio', 201, false], ['Portfolio', 2, true], ['Portfolio/V1', 1, false]]);
+  assert.ok(!ops[0].ids.includes('m0') && ops[2].ids.includes('m0'));
+  assert.equal(S.undoCounts(plan).moved, 2, 'a label deleted empty moved no mail');
+});
+
+test('an Apply records the labels it takes over and counts the messages it moved against the cap', () => {
+  const e = S.recordApply({ backfill: [], adoptLabels: ['Household'] }, 5);
+  assert.deepEqual([e.labelsAdopted, e.moved], [['Household'], []]);
+  e.moved.push({ ids: ['a', 'b'] }, { ids: ['c'] });
+  assert.equal(S.movedCount(e), 3);
+  const merged = S.mergeRecord(e, S.recordApply({ backfill: [], adoptLabels: ['Hobby'] }, 6));
+  assert.deepEqual([merged.labelsAdopted.sort(), merged.moved.length], [['Hobby', 'Household'], 2]);
+  assert.match(S.tooManyMoved('Household', 4100), /Nothing else changed|nothing else changed/);
 });
 
 test('archiving later skips threads with a message too new or still unread', () => {

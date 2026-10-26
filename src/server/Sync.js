@@ -5,7 +5,7 @@ var LabelboardSync = (function () {
 
   // ---------- quota: 6,000 units/min per user (Gmail API), we aim for 90% ----------
   // Units per call, from developers.google.com/workspace/gmail/api/reference/quota (labels.patch is not listed: 5 assumed).
-  var COST = { getProfile: 1, historyList: 2, threadsGet: 40, threadsList: 10, messagesList: 5, threadsModify: 10, batchModify: 50, labelsList: 1, labelsGet: 1, labelsCreate: 5, labelsPatch: 5, labelsDelete: 5, filtersList: 1, filtersCreate: 5, filtersDelete: 5 };
+  var COST = { getProfile: 1, historyList: 2, threadsGet: 40, threadsList: 10, messagesList: 5, threadsModify: 10, messagesModify: 5, batchModify: 50, labelsList: 1, labelsGet: 1, labelsCreate: 5, labelsPatch: 5, labelsDelete: 5, filtersList: 1, filtersCreate: 5, filtersDelete: 5 };
   // Token bucket: refills RATE units/s up to BURST, so any 60 s window spends at most BURST + 60·RATE
   // (400 + 5,400 < 6,000). Its state is plain JSON that rides in the cursor between slices (why: docs/CLAUDE-PROSE.md).
   var RATE = 6000 * 0.9 / 60, BURST = 400;
@@ -321,13 +321,34 @@ var LabelboardSync = (function () {
     });
     (plan.unlabel || []).forEach(function (e) { unlabeled[e.label] = (unlabeled[e.label] || []).concat(e.threadIds); });
     return { at: at, done: false, labelled: labelled, archived: Object.keys(archived), read: Object.keys(read), unlabeled: unlabeled,
-      labelsCreated: [], recolored: {}, filtersCreated: [], filtersRemoved: [], adopted: (plan.adopt || []).slice() };
+      labelsCreated: [], recolored: {}, filtersCreated: [], filtersRemoved: [], adopted: (plan.adopt || []).slice(), labelsAdopted: (plan.adoptLabels || []).slice(), moved: [] };
   }
   // An Apply run again after it stopped adds to the stopped one's entry: one Apply, one undo.
   function mergeRecord(a, b) {
     var ids = function (x, y) { var s = {}; (x || []).concat(y || []).forEach(function (t) { s[t] = 1; }); return Object.keys(s); };
     var map = function (x, y) { var o = {}; Object.keys(x).concat(Object.keys(y)).forEach(function (l) { o[l] = ids(x[l] || [], y[l] || []); }); return o; };
-    return Object.assign({}, a, { labelled: map(a.labelled, b.labelled), unlabeled: map(a.unlabeled, b.unlabeled), archived: ids(a.archived, b.archived), read: ids(a.read, b.read), adopted: ids(a.adopted, b.adopted) });
+    return Object.assign({}, a, { labelled: map(a.labelled, b.labelled), unlabeled: map(a.unlabeled, b.unlabeled), archived: ids(a.archived, b.archived), read: ids(a.read, b.read), adopted: ids(a.adopted, b.adopted),
+      labelsAdopted: ids(a.labelsAdopted, b.labelsAdopted) });
+  }
+  // A moved label's message ids ride in the record so the move can be undone; past this many in one Apply the record
+  // would crowd the 500 KB of storage, so Apply stops before moving more (about 17 bytes an id).
+  var MOVE_CAP = 4000;
+  function movedCount(e) { return (e.moved || []).reduce(function (n, m) { return n + m.ids.length; }, 0); }
+  function tooManyMoved(label, n) {
+    return 'Moving the mail under ' + label + ' would take Labelboard past the ' + MOVE_CAP.toLocaleString('en-US') + ' messages it can keep an undo for in one Apply (' +
+      n.toLocaleString('en-US') + ' with it). What was done so far stays done; nothing else changed. Apply again to carry on with the rest, or keep that label as yours.';
+  }
+  // The undo of moved labels as batch calls (≤ 1000 ids each): a moved message gets its label back and loses the one
+  // it moved to, unless it had that one already (had). moves: planUndo's, newest first.
+  function unmoveOps(moves) {
+    var ops = [];
+    (moves || []).forEach(function (m) {
+      var had = {}; (m.had || []).forEach(function (id) { had[id] = 1; });
+      var push = function (list, keepTo) { for (var i = 0; i < list.length; i += 1000) ops.push({ from: m.from, to: m.to, ids: list.slice(i, i + 1000), keepTo: keepTo }); };
+      push(m.ids.filter(function (id) { return !had[id]; }), false);
+      push(m.ids.filter(function (id) { return had[id]; }), true);
+    });
+    return ops;
   }
   function childrenFirst(names) { var d = function (l) { return l.split('/').length; }; return names.slice().sort(function (a, b) { return d(b) - d(a) || a.localeCompare(b); }); }
   // Undoing entries, newest first: each reverses one Apply, so per thread and label the oldest wins.
@@ -336,8 +357,9 @@ var LabelboardSync = (function () {
   // labels: created ones, children first (deleted once empty); colors: a label's colour before Labelboard's.
   // since/after: labels whose new filter skips the inbox, and from when (mail they kept out goes back); trashed: labels
   // whose new filter deletes, whose mail comes out of the trash. later: the timed rules to put back (oldest entry's).
+  // moves: labels moved, newest first (unmoveOps); handBack: labels of yours Labelboard took as they are (yours again).
   function planUndo(entries, all) {
-    var by = {}, colors = {}, created = {}, since = {}, trashed = {}, made = [], back = {}, later = null;
+    var by = {}, colors = {}, created = {}, since = {}, trashed = {}, made = [], back = {}, later = null, moves = [], handBack = {};
     var set = function (t, l, v) { (by[t] = by[t] || {})[l] = v; };
     entries.forEach(function (e) {
       Object.keys(e.labelled || {}).forEach(function (l) { e.labelled[l].forEach(function (t) { set(t, l, 0); }); });
@@ -348,6 +370,8 @@ var LabelboardSync = (function () {
       (e.labelsCreated || []).forEach(function (l) { created[l] = 1; });
       (e.filtersCreated || []).forEach(function (f) { made.push(f.id); if (f.trash) trashed[f.label] = 1; else if (f.archive) since[f.label] = 1; });
       (e.adopted || []).forEach(function (id) { back[id] = 1; });
+      (e.labelsAdopted || []).forEach(function (l) { handBack[l] = 1; });
+      moves = moves.concat((e.moved || []).slice().reverse());
       if ('later' in e) later = e.later;
     });
     var threads = Object.keys(by).sort().map(function (t) {
@@ -357,7 +381,8 @@ var LabelboardSync = (function () {
     });
     return { threads: threads, filters: { remove: made, restore: !all && entries.length ? (entries[0].filtersRemoved || []).slice() : [], handBack: Object.keys(back) },
       labels: childrenFirst(Object.keys(created)), colors: colors, since: Object.keys(since).sort(), trashed: Object.keys(trashed).sort(),
-      after: entries.length ? Math.min.apply(null, entries.map(function (e) { return e.at; })) : 0, later: all ? [] : later };
+      after: entries.length ? Math.min.apply(null, entries.map(function (e) { return e.at; })) : 0, later: all ? [] : later,
+      moves: moves, handBack: Object.keys(handBack).sort() };
   }
   // Gmail's search for mail a filter kept out of the inbox since `at` (ms), run on one label; trash: mail it deleted.
   function sinceQuery(at, trash) { return (trash ? 'in:trash' : '-in:inbox') + ' after:' + Math.floor(at / 1000); }
@@ -380,9 +405,9 @@ var LabelboardSync = (function () {
     plan.since.forEach(function (l) { want[l] = 1; });
     return threads.filter(function (t) { return !skip[t.id] && t.date >= iso && t.labels.indexOf('INBOX') < 0 && t.labels.some(function (l) { return want[l]; }); }).map(function (t) { return t.id; });
   }
-  // In numbers: threads that lose a label, go back to the inbox, get a label back.
+  // In numbers: threads that lose a label, go back to the inbox, get a label back; labels moved back (moved).
   function undoCounts(plan) {
-    var n = { threads: plan.threads.length, unlabel: 0, inbox: 0, relabel: 0, unread: 0 };
+    var n = { threads: plan.threads.length, unlabel: 0, inbox: 0, relabel: 0, unread: 0, moved: (plan.moves || []).filter(function (m) { return m.to; }).length };
     plan.threads.forEach(function (o) {
       if (o.remove.length) n.unlabel++;
       if (o.add.indexOf('INBOX') >= 0) n.inbox++;
@@ -405,7 +430,7 @@ var LabelboardSync = (function () {
   }
 
   return {
-    recordApply: recordApply, mergeRecord: mergeRecord, childrenFirst: childrenFirst, planUndo: planUndo, sinceQuery: sinceQuery, undoOps: undoOps, sinceMail: sinceMail, undoCounts: undoCounts, unrecorded: unrecorded,
+    recordApply: recordApply, mergeRecord: mergeRecord, MOVE_CAP: MOVE_CAP, movedCount: movedCount, tooManyMoved: tooManyMoved, unmoveOps: unmoveOps, childrenFirst: childrenFirst, planUndo: planUndo, sinceQuery: sinceQuery, undoOps: undoOps, sinceMail: sinceMail, undoCounts: undoCounts, unrecorded: unrecorded,
     COST: COST, RATE: RATE, BURST: BURST, budgetWait: budgetWait, historyChanges: historyChanges, diffInbox: diffInbox, relabel: relabel, mergeInbox: mergeInbox, applyOps: applyOps,
     WINDOW_DAYS: WINDOW_DAYS, INBOX_CAP: INBOX_CAP, tooBig: tooBig, windowQuery: windowQuery, windowShrink: windowShrink, timeline: timeline, addTimelines: addTimelines, splitWindow: splitWindow,
     criteriaQuery: criteriaQuery, normFilter: normFilter, filterAction: filterAction, specKey: specKey, filterKey: filterKey, specOf: specOf, specOnly: specOnly, laterQueries: laterQueries, laterIds: laterIds,

@@ -27,6 +27,8 @@ window.LabelboardAPI = (function () {
       return step(null);
     },
     windowOff: function () { return call('windowOff'); },
+    // { label name: {threads, messages} } for your labels, for the Labels view
+    counts: function () { return call('labelCounts').then(JSON.parse); },
     apply: function (plan, onProgress) {
       var json = JSON.stringify(plan);
       if (onProgress) onProgress({ done: 0, total: 1, text: 'Creating labels…' });

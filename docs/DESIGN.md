@@ -9,7 +9,9 @@ filled with their label color: friendly, but a user's loud palette makes a loud 
 
 ## Color
 The chrome is violet-tinted neutrals plus one accent. Gmail label colors never touch the chrome: they
-reach the page only as the card's tag (`--band`), the column dot, chips and rack slices.
+reach the page only as the card's tag (`--band`), the column dot, chips, rack slices and the Labels
+tab's swatches. A sub-label chip uses the column hue's lightest shade, as Gmail shows it after Apply
+(`rules.js shadeOf`); a label with no colour gets a hatched swatch.
 
 | Token | Light | Dark | For |
 |---|---|---|---|

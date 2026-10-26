@@ -93,14 +93,16 @@ function saveOwned_(filters, gone) {
   if (PROPS.getProperty('ownedFilters') != null) PROPS.deleteProperty('ownedFilters');
 }
 // Your Gmail filters and labels, read live on every load (2 quota units): the board shows them, flags
-// overlaps and drift, and diffs its plan against them.
+// overlaps and drift, and diffs its plan against them. labelInfo carries each label's colour for the Labels view.
 function gmailState_() {
   try {
-    var names = labelNames_(), filters = listFilters_(names), o = readOwned_();
-    var r = LabelboardSync.reconcile(o.filters, filters, o.gone);
+    var list = labelList_(), names = {};
+    list.forEach(function (l) { names[l.id] = l.name; });
+    var filters = listFilters_(names), o = readOwned_(), r = LabelboardSync.reconcile(o.filters, filters, o.gone);
     filters.forEach(function (f) { var s = r.owned[f.id]; f.owned = !!s; f.at = s && s.at || null; f.adopted = !!(s && s.adopted); });
-    var owned = JSON.parse(PROPS.getProperty('ownedLabels') || '[]').map(function (id) { return names[id]; }).filter(Boolean);
-    return { filters: filters, gone: r.gone, labels: Object.keys(names).map(function (id) { return names[id]; }), ownedLabels: owned,
+    var named = function (key) { return readIds_(key).map(function (id) { return names[id]; }).filter(Boolean); };
+    return { filters: filters, gone: r.gone, labels: Object.keys(names).map(function (id) { return names[id]; }), ownedLabels: named('ownedLabels'), adoptedLabels: named('adoptedLabels'),
+      labelInfo: list.map(function (l) { return { name: l.name, color: l.color || null, type: l.type }; }),
       later: { rules: readLater_(), log: JSON.parse(PROPS.getProperty('laterLog') || '{}') } };
   } catch (e) {
     return { error: String(e && e.message || e) };
@@ -294,6 +296,21 @@ function threadRecord_(id, me, names) {
   };
 }
 function labelList_() { return gmail_(LabelboardSync.COST.labelsList, function () { return Gmail.Users.Labels.list('me'); }).labels || []; }
+// Label ids Labelboard keeps in a user property: ownedLabels (created by it, or handed over) and adoptedLabels (handed over).
+function readIds_(key) { return JSON.parse(PROPS.getProperty(key) || '[]'); }
+function saveIds_(key, ids) { PROPS.setProperty(key, JSON.stringify(ids)); }
+// Threads and messages under each label of yours (labels.get, 1 unit each; labels.list leaves counts out). The Labels
+// view asks once when it opens.
+function labelCounts() {
+  BUDGET = { tokens: 0, at: 0 };
+  var out = {};
+  labelList_().forEach(function (l) {
+    if (l.type !== 'user') return;
+    var g = gmail_(LabelboardSync.COST.labelsGet, function () { return Gmail.Users.Labels.get('me', l.id); });
+    out[l.name] = { threads: g.threadsTotal || 0, messages: g.messagesTotal || 0 };
+  });
+  return JSON.stringify(out);
+}
 function labelNames_() {
   var m = {};
   labelList_().forEach(function (l) { m[l.id] = l.name; });
@@ -304,9 +321,10 @@ function listFilters_(names) {
   return list.map(function (f) { return LabelboardSync.normFilter(f, names); });
 }
 
-// ---------- apply: labels, then filters (diff), then the threads already in the inbox ----------
+// ---------- apply: labels, then filters (diff), then the threads already in the inbox, then labels moved ----------
 // progress p = { phase, op, ids (label name → id), budget, log }, handed back to the board until done.
 // The board decided thread by thread what mail already in the inbox gets; this labels those exact threads.
+// plan.recolor fixes colours on labels already in Gmail; plan.adoptLabels / plan.handover / plan.moves: labels.js housekeeping.
 function applyPlan(planJson, progressJson) {
   var plan = JSON.parse(planJson), p = progressJson ? JSON.parse(progressJson) : { phase: 'labels', op: 0, log: {} };
   var start = Date.now(), late = function () { return Date.now() - start > SLICE_MS; };
@@ -314,23 +332,30 @@ function applyPlan(planJson, progressJson) {
   var pause = function (step, steps, text) { p.budget = BUDGET; return JSON.stringify({ done: false, progress: JSON.stringify(p), step: step, steps: steps, text: text }); };
   if (p.phase === 'labels') {
     delBlob_('apply.m'); startRecord_(plan);
-    p.ids = ensureLabels_(plan.labels, p); p.phase = 'filters'; return pause(0, 1, 'Labels ready. Creating filters…');
+    p.ids = ensureLabels_(plan.labels, p, plan.recolor);
+    adoptLabels_(plan.adoptLabels, p.ids);
+    p.phase = 'filters'; return pause(0, 1, 'Labels ready. Creating filters…');
   }
   if (p.phase === 'filters') {
     if (syncFilters_(plan, p.ids, p, late)) return pause(p.log.filtersCreated || 0, plan.filters.length, 'Creating filters: ' + (p.log.filtersCreated || 0) + ' made so far');
     p.phase = 'threads';
   }
-  // The inbox's message ids (messages.list, 5 units per 500) let one batch call label many threads.
-  // Relisted if the cache dropped them: every step is safe to repeat, so the steps restart from the top.
-  var msgs = getBlob_('apply.m', null);
-  if (!msgs) { msgs = inboxMessages_(plan); putBlob_('apply.m', msgs); p.op = 0; }
-  var ops = LabelboardSync.applyOps(plan.backfill, ownedOnly_(plan.unlabel, p.ids), p.ids, msgs);
-  while (p.op < ops.length) {
-    if (late()) return pause(p.op, ops.length, 'Sorting your inbox: step ' + p.op + ' of ' + ops.length);
-    runOp_(ops[p.op], p);
-    p.op++;
+  if (p.phase === 'threads') {
+    // The inbox's message ids (messages.list, 5 units per 500) let one batch call label many threads.
+    // Relisted if the cache dropped them: every step is safe to repeat, so the steps restart from the top.
+    var msgs = getBlob_('apply.m', null);
+    if (!msgs) { msgs = inboxMessages_(plan); putBlob_('apply.m', msgs); p.op = 0; }
+    var ops = LabelboardSync.applyOps(plan.backfill, ownedOnly_(plan.unlabel, p.ids), p.ids, msgs);
+    while (p.op < ops.length) {
+      if (late()) return pause(p.op, ops.length, 'Sorting your inbox: step ' + p.op + ' of ' + ops.length);
+      runOp_(ops[p.op], p);
+      p.op++;
+    }
+    delBlob_('apply.m');
+    p.phase = 'moves'; p.mv = 0;
   }
-  delBlob_('apply.m');
+  var moves = plan.moves || [];
+  if (moveLabels_(plan, p, late)) return pause(p.mv, moves.length, 'Moving mail between labels: ' + p.mv + ' of ' + moves.length + ' labels');
   if (plan.later) setLater_(plan.later); // a plan from before timed rules leaves them as they are
   noteApply_(function (e) { e.done = true; });
   return JSON.stringify({ done: true, summary: summary_(p.log, plan) });
@@ -390,10 +415,10 @@ function inboxMessages_(plan) {
   } while (token);
   return msgs;
 }
-// Re-sorting only ever takes off labels Labelboard created itself (ownedLabels), never one you made.
+// Re-sorting only ever takes off labels Labelboard created itself (ownedLabels), never one you made or handed over as it is.
 function ownedOnly_(unlabel, ids) {
-  var owned = JSON.parse(PROPS.getProperty('ownedLabels') || '[]');
-  return (unlabel || []).filter(function (e) { return owned.indexOf(ids[e.label]) >= 0; });
+  var owned = readIds_('ownedLabels'), adopted = readIds_('adoptedLabels');
+  return (unlabel || []).filter(function (e) { var id = ids[e.label]; return owned.indexOf(id) >= 0 && adopted.indexOf(id) < 0; });
 }
 function runOp_(op, p) {
   var body = { addLabelIds: op.add, removeLabelIds: op.remove };
@@ -409,9 +434,11 @@ function modifyThread_(t, body, p) {
   try { gmail_(LabelboardSync.COST.threadsModify, function () { return Gmail.Users.Threads.modify(body, 'me', t); }); }
   catch (e) { if (!notFound_(e)) throw e; p.log.missing = (p.log.missing || 0) + 1; } // deleted since the read: skipped
 }
-function ensureLabels_(labels, p) {
-  var byName = {}, owned = JSON.parse(PROPS.getProperty('ownedLabels') || '[]');
-  (gmail_(LabelboardSync.COST.labelsList, function () { return Gmail.Users.Labels.list('me'); }).labels || []).forEach(function (l) { byName[l.name] = l; });
+// recolor: [{name, color}] for labels already in Gmail that the plan doesn't name (a company with no mail in this read,
+// one left over and kept); a missing one is left alone.
+function ensureLabels_(labels, p, recolor) {
+  var byName = {}, owned = readIds_('ownedLabels');
+  labelList_().forEach(function (l) { byName[l.name] = l; });
   var want = {};
   labels.forEach(function (l) {
     var parts = l.name.split('/');
@@ -425,18 +452,79 @@ function ensureLabels_(labels, p) {
       if (l.color) body.color = l.color;
       byName[name] = gmail_(LabelboardSync.COST.labelsCreate, function () { return Gmail.Users.Labels.create(body, 'me'); });
       owned.push(byName[name].id);
-      PROPS.setProperty('ownedLabels', JSON.stringify(owned));
+      saveIds_('ownedLabels', owned);
       noteApply_(function (e) { e.labelsCreated.push(name); });
       p.log.labelsCreated = (p.log.labelsCreated || 0) + 1;
-    } else if (l.color && (!have.color || have.color.backgroundColor !== l.color.backgroundColor)) {
-      noteApply_(function (e) { if (!(name in e.recolored)) e.recolored[name] = have.color || null; }); // the colour before the first Apply that changed it
-      gmail_(LabelboardSync.COST.labelsPatch, function () { return Gmail.Users.Labels.patch({ color: l.color }, 'me', have.id); });
-      p.log.labelsRecolored = (p.log.labelsRecolored || 0) + 1;
-    }
+    } else recolor_(name, have, l.color, p);
   });
+  (recolor || []).forEach(function (r) { if (byName[r.name] && !want[r.name]) recolor_(r.name, byName[r.name], r.color, p); });
   var ids = {};
   Object.keys(byName).forEach(function (n) { ids[n] = byName[n].id; });
   return ids;
+}
+function recolor_(name, have, color, p) {
+  if (!color || have.color && have.color.backgroundColor === color.backgroundColor) return;
+  noteApply_(function (e) { if (!(name in e.recolored)) e.recolored[name] = have.color || null; }); // the colour before the first Apply that changed it
+  gmail_(LabelboardSync.COST.labelsPatch, function () { return Gmail.Users.Labels.patch({ color: color }, 'me', have.id); });
+  p.log.labelsRecolored = (p.log.labelsRecolored || 0) + 1;
+}
+// Labels of yours handed over as they are: Labelboard's from now on (colours follow the column; re-sorting leaves them on,
+// since they carry mail no card gives), and given back untouched by Undo or Remove everything.
+function adoptLabels_(names, ids) {
+  var owned = readIds_('ownedLabels'), adopted = readIds_('adoptedLabels');
+  (names || []).forEach(function (n) { var id = ids[n]; if (id && owned.indexOf(id) < 0) { owned.push(id); adopted.push(id); } });
+  saveIds_('ownedLabels', owned); saveIds_('adoptedLabels', adopted);
+}
+// Labels moved: a left-over label's mail to where its card is now, a label of yours folded into a column. Per label its
+// messages (spam and trash too) are listed and recorded before the first change, so a full record stops it there; then
+// moved 500 at a time and the label deleted, unless labels are left under it. to: null deletes the label only if empty.
+// Only Labelboard's labels and those you handed over (plan.handover) move. p.mv: the move under way; p.listed: recorded.
+// Returns true when out of time.
+function moveLabels_(plan, p, late) {
+  var S = LabelboardSync, moves = plan.moves || [], handed = {}, list = labelList_(), byName = {};
+  (plan.handover || []).forEach(function (n) { handed[n] = 1; });
+  list.forEach(function (l) { byName[l.name] = l; });
+  var kids = function (n) { return Object.keys(byName).some(function (x) { return x.indexOf(n + '/') === 0; }); };
+  for (; p.mv < moves.length; p.mv++, p.listed = false) {
+    var m = moves[p.mv], from = byName[m.from], to = m.to && byName[m.to], owned = readIds_('ownedLabels');
+    if (!from) continue; // gone already (an earlier slice moved it)
+    var mine = owned.indexOf(from.id) >= 0;
+    if (m.to && !to || !mine && !handed[m.from]) { (p.log.skipped = p.log.skipped || []).push(m.from); continue; } // its target is gone, or it isn't Labelboard's to move
+    if (!m.to) {
+      var l = kids(m.from) ? null : gmail_(S.COST.labelsGet, function () { return Gmail.Users.Labels.get('me', from.id); });
+      if (!l || l.threadsTotal) { (p.log.kept = p.log.kept || []).push(m.from); continue; }
+      noteApply_(function (e) { e.moved.push({ from: m.from, to: null, color: from.color || null, owned: mine, ids: [], had: [] }); });
+    } else {
+      if (!p.listed) {
+        var ids = listMessages_([from.id]), had = listMessages_([from.id, to.id]), e = readRecord_().applies.slice(-1)[0], n = S.movedCount(e || {}) + ids.length;
+        if (n > S.MOVE_CAP) throw plain_(S.tooManyMoved(m.from, n));
+        noteApply_(function (e) { e.moved.push({ from: m.from, to: m.to, color: from.color || null, owned: mine, ids: ids, had: had }); });
+        p.listed = true;
+      }
+      for (var batch, last = null; (batch = listMessages_([from.id], 500)).length && batch[0] !== last; last = batch[0]) { // the same page twice: Gmail kept the label, stop
+        if (late()) return true;
+        gmail_(S.COST.batchModify, function () { return Gmail.Users.Messages.batchModify({ ids: batch, addLabelIds: [to.id], removeLabelIds: [from.id] }, 'me'); });
+      }
+      p.log.labelsMoved = (p.log.labelsMoved || 0) + 1;
+    }
+    if (kids(m.from)) { (p.log.kept = p.log.kept || []).push(m.from); continue; }
+    try { gmail_(S.COST.labelsDelete, function () { return Gmail.Users.Labels.remove('me', from.id); }); } catch (err) { if (!notFound_(err)) throw err; }
+    delete byName[m.from];
+    saveIds_('ownedLabels', readIds_('ownedLabels').filter(function (x) { return x !== from.id; }));
+    saveIds_('adoptedLabels', readIds_('adoptedLabels').filter(function (x) { return x !== from.id; }));
+    p.log.labelsDeleted = (p.log.labelsDeleted || 0) + 1;
+  }
+  return false;
+}
+// Message ids carrying every label in labelIds (spam and trash too); max: one page of at most that many.
+function listMessages_(labelIds, max) {
+  var out = [], token = null;
+  do {
+    var page = gmail_(LabelboardSync.COST.messagesList, function () { return Gmail.Users.Messages.list('me', { labelIds: labelIds, includeSpamTrash: true, maxResults: max || 500, pageToken: token || undefined }); });
+    (page.messages || []).forEach(function (m) { out.push(m.id); });
+    token = page.nextPageToken;
+  } while (token && !max);
+  return out;
 }
 // Only filters Labelboard made or was handed (readOwned_) are ever deleted. Each slice re-reads Gmail's
 // filters and works out what's left, so a stopped run resumes cleanly; each new id is saved at once.
@@ -482,7 +570,10 @@ function summary_(log, plan) {
     if (e.read) (e.unread || e.threadIds).forEach(function (t) { read[t] = 1; });
   });
   var n = Object.keys(sorted).length, out = Object.keys(gone).length, nr = Object.keys(read).length, later = (plan.later || []).length;
-  return [log.labelsCreated && log.labelsCreated + ' labels created', log.filtersCreated && log.filtersCreated + ' filters created',
+  return [log.labelsCreated && log.labelsCreated + ' labels created', log.labelsRecolored && log.labelsRecolored + ' recoloured',
+    log.labelsMoved && log.labelsMoved + ' labels moved', log.labelsDeleted && log.labelsDeleted + ' old labels deleted',
+    log.kept && log.kept.length + ' kept because they still hold mail or labels',
+    log.skipped && log.skipped.length + ' not moved (' + log.skipped.join(', ') + '): read again and review', log.filtersCreated && log.filtersCreated + ' filters created',
     log.filtersRemoved && log.filtersRemoved + ' old filters removed', log.filtersLeftOut && log.filtersLeftOut + ' filters left out (deleted in Gmail)',
     n && n + ' threads sorted', out && out + ' left the inbox', nr && nr + ' marked read', later && later + (later === 1 ? ' card archives' : ' cards archive') + ' later, checked every hour',
     log.missing && log.missing + ' no longer existed']
@@ -511,7 +602,11 @@ function applyUndo(kind, keepJson) {
     if (undoFilters_(plan, u, names, ids, late)) return pause(0, 1, 'Taking Labelboard\'s filters out of Gmail…');
     u.phase = 'since'; saveRecord_(rec);
   }
-  if (u.phase === 'since') { u.since = sinceThreads_(plan, ids, plan.since); u.trashed = sinceThreads_(plan, ids, plan.trashed || [], true); u.phase = 'threads'; u.op = 0; saveRecord_(rec); }
+  if (u.phase === 'since') { u.since = sinceThreads_(plan, ids, plan.since); u.trashed = sinceThreads_(plan, ids, plan.trashed || [], true); u.phase = 'unmove'; u.op = 0; saveRecord_(rec); }
+  if (u.phase === 'unmove') {
+    if (unmove_(plan, u, ids, late)) return pause(u.op, S.unmoveOps(plan.moves).length, 'Putting moved mail back under its labels…');
+    u.phase = 'threads'; u.op = 0; saveRecord_(rec);
+  }
   if (u.phase === 'threads') {
     var ops = S.undoOps(plan, u.since, u.trashed); // one call per thread with all its changes, so a stop never leaves one half done
     for (var first = u.op; u.op < ops.length;) { // at least one step per slice, so a slow start still moves on
@@ -572,6 +667,37 @@ function sinceThreads_(plan, ids, labels, trash) {
   });
   return out;
 }
+// Labels moved come back: one deleted is made again, parents first (its colour; Labelboard's again only if it was), then
+// each moved message gets it back and loses the label it moved to, unless it had that one already. True when out of time.
+function unmove_(plan, u, ids, late) {
+  var S = LabelboardSync, ops = S.unmoveOps(plan.moves);
+  if (!u.made) {
+    var owned = readIds_('ownedLabels'), by = {};
+    plan.moves.forEach(function (m) { if (!ids[m.from] && !by[m.from]) by[m.from] = m; });
+    Object.keys(by).sort(function (a, b) { return a.split('/').length - b.split('/').length || a.localeCompare(b); }).forEach(function (n) {
+      var body = { name: n, labelListVisibility: 'labelShow', messageListVisibility: 'show' };
+      if (by[n].color) body.color = by[n].color;
+      ids[n] = gmail_(S.COST.labelsCreate, function () { return Gmail.Users.Labels.create(body, 'me'); }).id;
+      if (by[n].owned) { owned.push(ids[n]); saveIds_('ownedLabels', owned); }
+      u.log.labelsBack = (u.log.labelsBack || 0) + 1;
+    });
+    u.made = true;
+  }
+  for (var first = u.op; u.op < ops.length; u.op++) {
+    if (u.op > first && late()) return true;
+    var o = ops[u.op], add = ids[o.from] ? [ids[o.from]] : [], rm = !o.keepTo && ids[o.to] ? [ids[o.to]] : [];
+    if (!add.length && !rm.length) continue;
+    try { gmail_(S.COST.batchModify, function () { return Gmail.Users.Messages.batchModify({ ids: o.ids, addLabelIds: add, removeLabelIds: rm }, 'me'); }); }
+    catch (e) {
+      if (!notFound_(e) && !/invalid/i.test(String(e))) throw e;
+      o.ids.forEach(function (id) { // a message deleted since: one at a time, skipping the gone
+        try { gmail_(S.COST.messagesModify, function () { return Gmail.Users.Messages.modify({ addLabelIds: add, removeLabelIds: rm }, 'me', id); }); }
+        catch (x) { if (!notFound_(x)) throw x; u.log.missing = (u.log.missing || 0) + 1; }
+      });
+    }
+  }
+  return false;
+}
 function untrash_(t, p) {
   try { gmail_(LabelboardSync.COST.threadsModify, function () { return Gmail.Users.Threads.untrash('me', t); }); }
   catch (e) { if (!notFound_(e)) throw e; p.log.missing = (p.log.missing || 0) + 1; }
@@ -579,7 +705,13 @@ function untrash_(t, p) {
 // Colours go back (only where there was one: unchecked whether Gmail can clear a colour), then labels Labelboard
 // created are deleted once empty, children first ('all': every label it created). One still holding mail stays.
 function undoLabels_(plan, u, ids, late) {
-  var S = LabelboardSync, owned = JSON.parse(PROPS.getProperty('ownedLabels') || '[]'), count = function (k) { u.log[k] = (u.log[k] || 0) + 1; };
+  var S = LabelboardSync, owned = readIds_('ownedLabels'), count = function (k) { u.log[k] = (u.log[k] || 0) + 1; };
+  if (!u.handed) { // labels of yours taken as they are go back to you first, so they are never deleted below
+    var adopted = readIds_('adoptedLabels'), back = u.kind === 'all' ? adopted : plan.handBack.map(function (n) { return ids[n]; }).filter(function (id) { return id && adopted.indexOf(id) >= 0; });
+    owned = owned.filter(function (id) { return back.indexOf(id) < 0; });
+    saveIds_('ownedLabels', owned); saveIds_('adoptedLabels', adopted.filter(function (id) { return back.indexOf(id) < 0; }));
+    u.log.labelsHandedBack = back.length; u.handed = true;
+  }
   if (!u.colors) {
     Object.keys(plan.colors).forEach(function (n) {
       var c = plan.colors[n]; if (!c || !ids[n]) return;
@@ -609,6 +741,8 @@ function undoSummary_(u, plan) {
     log.filtersDeleted && many(log.filtersDeleted, 'filter', 'filters') + ' deleted', log.filtersRestored && log.filtersRestored + ' made again',
     log.handedBack && many(log.handedBack, 'filter', 'filters') + ' handed back to you', c.unlabel && many(c.unlabel, 'thread', 'threads') + ' unlabelled',
     c.inbox + since && (c.inbox + since) + ' back in your inbox', c.unread && c.unread + ' unread again', c.relabel && many(c.relabel, 'thread', 'threads') + ' got a label back',
+    c.moved && many(c.moved, 'label', 'labels') + ' moved back', log.labelsBack && many(log.labelsBack, 'label', 'labels') + ' made again',
+    log.labelsHandedBack && many(log.labelsHandedBack, 'label', 'labels') + ' handed back to you',
     log.labelsDeleted && many(log.labelsDeleted, 'label', 'labels') + ' deleted', kept.length && many(kept.length, 'label', 'labels') + ' kept because ' + (kept.length === 1 ? 'it still holds' : 'they still hold') + ' mail (' + kept.join(', ') + ')',
     log.missing && log.missing + ' no longer existed'].filter(Boolean).join(', ') || 'Nothing to change';
 }

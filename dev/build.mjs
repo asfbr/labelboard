@@ -14,6 +14,8 @@ export function boardHtml(target) {
     .replace('/*@STYLE@*/', () => read('src/board/style.css'))
     .replace('/*@RULES@*/', () => read('src/rules.js'))
     .replace('/*@INSIGHTS@*/', () => read('src/insights.js'))
+    .replace('/*@LABELS@*/', () => read('src/labels.js'))
+    .replace('/*@LABELSVIEW@*/', () => read('src/board/labels-view.js'))
     .replace('/*@VIEWS@*/', () => read('src/board/views.js'))
     .replace('/*@TRIAGE@*/', () => read('src/board/triage.js'))
     .replace('/*@HOME@*/', () => read('src/board/home.js'))

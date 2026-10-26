@@ -18,7 +18,7 @@ inside an item is marked ✔ or ❓ with a date, never left in prose. When an it
   personal mailbox). Parked with going public, so no rush.
 - ❓ **Unscheduled Now items**: *Guide fixes* and *Estimate, then resume* are Now but in no session.
   Fold them into one, or move them to Next.
-- ❓ **Folder map**: its own tab, or part of *Flow and Filters as one tab* (session 5).
+
 ## Session order
 
 ✔ Decided 17 Oct 2026.
@@ -57,7 +57,7 @@ no date and stay Later.
 | Browser extension or Claude in Chrome | Integrations | ⚪ Later | L | — | ✔ only if the brief and the skill fall short (19 Oct) · Data out |
 | Search without a full redraw | Speed | 🔵 Next | S | — | |
 | Flow and Filters as one tab | Before and after | 🟢 Now | M | 5 | ✔ 19 Oct |
-| Folder map | Before and after | 🔵 Next | M | 5 | ❓ own tab or part of Flow and Filters |
+| Folder map (the Labels tab) | Before and after | ✅ Done 26 Oct | M | — | ✔ own tab, with hand-over (26 Oct) |
 | One-link install | Install | ⚪ Later | M | — | ❓ template owner |
 | Gmail add-on | Install | ⚪ Later | — | — | needs Marketplace verification |
 | Board while it reads | First read | ⚪ Later | L | — | |
@@ -149,8 +149,16 @@ no date and stay Later.
   from the card's mail ("came through deals@ and you answered none"). Cards with nothing set keep
   byte-identical filters, keys and backfill on the real snapshot. `rules.js cardDoes`/`whenQuery`/
   `laterRules`/`actionHint`, `Sync.js filterAction`, `Code.js runLater`; tested.
+- ✅ 26 Oct: labels and colours (✔ picked 26 Oct from mocked options: 1b hand-over, 2b light shade, 3b
+  clear leftovers; asked for because Gmail held two Portfolio trees, grey folders and two M&A layouts).
+  A *Labels* tab: every Gmail label in Gmail's colours, by column; fold a label of yours into a column or
+  let the board take it as it is (filters that add it go with it); leftovers from an earlier layout move
+  their mail to where the card is now; folders and sub-labels in the column's lighter shade; columns
+  that look alike flagged. Moves are recorded per message and undone exactly. Cards, filter queries and
+  backfill unchanged on the real snapshot. `labels.js`, `rules.js labelColor`, `Code.js moveLabels_`/
+  `unmove_`; tested. Why and how: `ARCHITECTURE.md` → Labels.
 
-Latest build v0.0.26 (`package.json`).
+Latest build v0.0.27 (`package.json`).
 
 ## Item briefs
 
@@ -239,9 +247,6 @@ and the views don't show what a move just did. The pane under the board does now
 - **Flow and Filters as one tab** · 🟢 Now · M · ✔ 19 Oct. Now that the pane shows Now → After live,
   the tab can be about how labels got there. One Sankey, Now → After, the left side split by who
   placed the card (You, Claude, Rule, Gmail), the filter day bars below.
-- **Folder map** · 🔵 Next · M · ❓ own tab or folded into the one above. The Gmail label tree after
-  Apply (`_M&A` → `Deals` → `Acme`), threads now and after per folder; click a folder for its cards.
-  Asked for 19 Oct while setting up M&A as Advisors / Buyers / Deals.
 
 ### Daily use
 
@@ -314,17 +319,21 @@ On the real account, before touching that area.
 - [ ] Card actions after a real Apply: a starring / mark-read / delete filter reads back from Gmail as
   Labelboard's own (not "edited"), `runLater` archives on its first hourly run, undo puts unread and
   trashed mail back. Only Node tests and the preview so far.
+- [ ] Labels on the real account (Node tests and the preview only): `labelCounts` time on ~180 labels;
+  a fold (messages moved, old label deleted, a filter of yours rewritten to the new label), a leftover
+  cleared, colours patched, then *Undo this Apply* (labels made again with their colour, mail back).
+  Also whether Gmail refuses a name that differs only in case.
 
 ## Known gaps kept as they are
 
 - Moving a card re-sorts inbox threads only; archived mail keeps its labels (a Gmail search per card
-  would be needed).
+  would be needed). A whole label's mail moves only when the label is left over or folded (Labels).
 - Archived mail older than the window (30 days) isn't on the board.
 - Your own Gmail filters don't change the before/after numbers (they act on new mail); they count in
   their lane.
 - In the local preview, a column remap can't rewrite contacts files in the seed folder.
-- The apply record has no cap: one entry per Apply (thread ids only, a few KB), in the same 500 KB as
-  the snapshot. *Remove everything* empties it.
+- The apply record has no cap on Applies: one entry per Apply (thread ids, a few KB; label moves add
+  message ids, capped at 4,000 per Apply), in the same 500 KB as the snapshot. *Remove everything* empties it.
 - *Remove everything* after Applies from before the record: mail their filters archived stays archived
   under its label (the label isn't empty, so it stays too).
 

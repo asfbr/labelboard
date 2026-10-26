@@ -1,16 +1,7 @@
 /* Labelboard board — talks to the server only through window.LabelboardAPI (see adapters). */
 (function () {
   'use strict';
-  var R = window.LabelboardRules, API = window.LabelboardAPI;
-  // Gmail only accepts label colors from its own palette; columns use the same values.
-  var PALETTE = ['#000000', '#434343', '#666666', '#999999', '#cccccc', '#efefef', '#f3f3f3', '#ffffff',
-    '#fb4c2f', '#ffad47', '#fad165', '#16a766', '#43d692', '#4a86e8', '#a479e2', '#f691b3',
-    '#f6c5be', '#ffe6c7', '#fef1d1', '#b9e4d0', '#c6f3de', '#c9daf8', '#e4d7f5', '#fcdee8',
-    '#efa093', '#ffd6a2', '#fce8b3', '#89d3b2', '#a0eac9', '#a4c2f4', '#d0bcf1', '#fbc8d9',
-    '#e66550', '#ffbc6b', '#fcda83', '#44b984', '#68dfa9', '#6d9eeb', '#b694e8', '#f7a7c0',
-    '#cc3a21', '#eaa041', '#f2c960', '#149e60', '#3dc789', '#3c78d8', '#8e63ce', '#e07798',
-    '#ac2b16', '#cf8933', '#d5ae49', '#0b804b', '#2a9c68', '#285bac', '#653e9b', '#b65775',
-    '#822111', '#a46a21', '#aa8831', '#076239', '#1a764d', '#1c4587', '#41236d', '#83334c'];
+  var R = window.LabelboardRules, LB = window.LabelboardLabels, API = window.LabelboardAPI;
   var KIND = { process: 'Mail with a signal word', entity: 'In your contacts', alias: 'Group address', pattern: 'Subject rule', domain: 'Everyone at a domain', sender: 'One sender', firm: 'Your colleagues' };
   var S = {}; // snapshot, recent (the window), mail (both), config, seeds, gmail (filters, labels), record (Applies, undo), built, byId, cardByKey, filters, yoursBy, mode
   var $ = function (id) { return document.getElementById(id); };
@@ -92,10 +83,11 @@
     var c = bg.replace('#', ''), r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
     return (r * 299 + g * 587 + b * 114) / 1000 > 150 ? '#000000' : '#ffffff';
   }
+  // A sub-label in its column's lighter shade, as Gmail shows it after Apply (rules.js labelColor).
   function labelChip(b, sub) {
     if (!b || !b.label) return '';
-    var bg = bandOf(b) || '#cccccc';
-    return '<span class="chip" style="background:' + bg + ';color:' + (b.color && hex(b.color.textColor) || textOn(bg)) + '">' + h(sub ? b.label + '/' + sub : b.label) + '</span>';
+    var c = sub ? R.shadeOf(b.color) : b.color, bg = c && hex(c.backgroundColor) || '#cccccc';
+    return '<span class="chip" style="background:' + bg + ';color:' + (c && hex(c.textColor) || textOn(bg)) + '">' + h(sub ? b.label + '/' + sub : b.label) + '</span>';
   }
   // A chip for any Gmail label name: in its column's color when it belongs to one.
   function nameChip(name) {
@@ -119,7 +111,7 @@
     document.querySelectorAll('[data-view]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.view === v); b.tabIndex = b.dataset.view === v ? 0 : -1; });
     if (!board) { $('rack').classList.add('compact'); drawView(v); } else { VIEWS.hideTip(); $('rack').classList.remove('compact'); if (S.st) VIEWS.pane(); }
   }
-  function drawView(v) { if (v === 'home') { VIEWS.hideTip(); HOME.render(); } else VIEWS.render(v); }
+  function drawView(v) { if (v === 'home') { VIEWS.hideTip(); HOME.render(); } else if (v === 'labels') { VIEWS.hideTip(); LABELS.render(); } else VIEWS.render(v); }
   function refreshView() { if (!rendering && S.snapshot && view() !== 'board') drawView(view()); }
   $('brand').addEventListener('click', function () { if (S.snapshot) showView('home'); });
   $('views').addEventListener('click', function (e) {
@@ -471,7 +463,17 @@
     var st = g.filters ? LabelboardSync.filterStatus(pf.filters, g.filters, g.gone, adopt, S.config.release, S.config.restoreFilters) : null;
     var newLabels = g.labels ? pf.labels.filter(function (l) { return g.labels.indexOf(l.name) < 0; }).length : 0;
     var later = R.laterRules(S.built, S.config), laterNew = JSON.stringify(later) !== JSON.stringify(g.later ? g.later.rules : []) ? 1 : 0; // the timed rules, as one change
-    S.fs = { filters: pf.filters, status: st, byCard: byCard, later: later, laterNew: laterNew, pending: st ? st.actions.create.length + st.actions.remove.length + adopt.length + (S.config.release || []).length + newLabels + laterNew : null };
+    var ls = labelState(pf), hk = ls ? ls.hk : null, labelsNew = hk ? hk.recolor.length + hk.repaint + hk.moves.length + hk.adoptLabels.length : 0;
+    S.fs = { filters: pf.filters, status: st, byCard: byCard, later: later, laterNew: laterNew, pending: st ? st.actions.create.length + st.actions.remove.length + adopt.length + (S.config.release || []).length + newLabels + laterNew + labelsNew : null };
+  }
+  // Gmail's labels against the board (labels.js): rows for the Labels view and what Apply does about them (hk). plan: a
+  // buildPlan, or planFilters when only counting (its labels lack the inbox's AI-read sub-labels). null: labels not read.
+  function labelState(plan) {
+    var g = S.gmail || {};
+    if (!g.labelInfo) return null;
+    plan = plan || R.buildPlan(S.snapshot, S.built, S.config, S.seeds, g);
+    var rows = LB.classify(g.labelInfo, g.ownedLabels || [], LB.layout(S.built, S.config, plan, g.adoptedLabels), S.config);
+    return { rows: rows, hk: LB.housekeeping(rows, plan, S.config, g.filters), plan: plan };
   }
   // The header's Review button says whether Gmail has caught up with the board.
   // The badge counts filter and label changes plus the inbox threads Apply sorts: everything not in Gmail yet.
@@ -970,7 +972,7 @@
       '</ul><h3 class="rv-h">What stays</h3><ul class="rv-list">' +
       li(left && left.threads ? plural(left.threads, 'thread') + ' with Labelboard\'s labels that no recorded Apply gave ' + (left.threads === 1 ? 'it' : 'them') + ' (labelled by hand, by its filters, or by an Apply from before Labelboard kept a record) keep' + (left.threads === 1 ? 's it' : ' them') +
         ', so ' + (left.labels.length === 1 ? 'this label stays' : 'these labels stay') + ': ' + left.labels.map(nameChip).join(' ') + '.' : '') +
-      li('Labels and filters you made yourself. Nothing is deleted or sent.') +
+      li('Labels and filters you made yourself' + (plan.handBack.length || plan.moves.some(function (m) { return !m.owned; }) || all && (S.gmail.adoptedLabels || []).length ? ' (ones you handed over come back to you)' : '') + '. No mail is deleted or sent.') +
       li(all ? 'Your board and settings, so you can apply again later.' : 'Your board: Review changes then offers this Apply again.') + '</ul>' +
       '<div class="plan-actions"><button class="btn danger-fill" type="button" data-undo="' + kind + '" data-go="1">' + (all ? 'Remove everything' : 'Undo this Apply') + '</button><button class="btn" type="button" id="un-keep">Keep it</button></div>';
     $('un-keep').onclick = function () { openReview(); };
@@ -993,8 +995,17 @@
   // What Apply sends: the plan, plus filter hand-overs (adopt), hand-backs (release) and restores.
   // The backfill keeps only what Gmail doesn't have yet: a thread that has the label and stays in the inbox is left alone.
   // `had`: threads of a skip-inbox label that already carry it (they only leave the inbox), so an undo leaves their label on.
+  // Labels (labels.js housekeeping): colours fixed on labels already in Gmail, labels moved (left over, or yours folded in),
+  // labels of yours taken as they are; filters of yours that go with a fold are adopted first (LABELS.syncFilters).
   function applyPlan() {
-    var plan = R.buildPlan(S.snapshot, S.built, S.config, S.seeds, S.gmail), has = function (e) { return function (id) { return S.byId[id].labels.indexOf(e.label) >= 0; }; };
+    var ls = labelState();
+    if (ls && LABELS.syncFilters(ls.rows)) { save(); ls = labelState(); }
+    var plan = ls ? ls.plan : R.buildPlan(S.snapshot, S.built, S.config, S.seeds, S.gmail), has = function (e) { return function (id) { return S.byId[id].labels.indexOf(e.label) >= 0; }; };
+    S.house = ls; // for Review's words
+    if (ls) {
+      plan.labels = plan.labels.concat(ls.hk.create);
+      plan.recolor = ls.hk.recolor; plan.moves = ls.hk.moves; plan.adoptLabels = ls.hk.adoptLabels; plan.handover = ls.hk.handover;
+    }
     // A mark-as-read entry also keeps threads that have the label but are unread (`unread`: the ones it marks).
     plan.backfill = plan.backfill.map(function (e) {
       var unread = e.read ? e.threadIds.filter(function (id) { return S.byId[id].labels.indexOf('UNREAD') >= 0; }) : [];
@@ -1006,6 +1017,26 @@
     plan.release = S.config.release || [];
     plan.restore = S.config.restoreFilters || [];
     return plan;
+  }
+  // What Apply does to labels beyond the board's own, in Review's words (S.house: labelState, set by applyPlan).
+  function houseLines() {
+    var ls = S.house; if (!ls) return { lines: [], moves: 0, handed: 0 };
+    var hk = ls.hk, by = {}, out = [], folds = {}, left = [], tidy = 0, paint = hk.recolor.length + hk.repaint, many = function (n, one, more) { return n === 1 ? one : more; };
+    ls.rows.forEach(function (r) { by[r.name] = r; });
+    hk.moves.forEach(function (m) {
+      var r = by[m.from]; if (!r) return;
+      if (r.kind === 'yours') (folds[r.hand.top] = folds[r.hand.top] || []).push(m); else if (m.to) left.push(m); else tidy++;
+    });
+    if (paint) out.push(plural(paint, 'label') + ' get' + many(paint, 's', '') + ' ' + many(paint, 'its', 'their') + ' column\'s colour: the column\'s own label its colour, sub-labels and folders a lighter shade.');
+    Object.keys(folds).forEach(function (top) {
+      var n = folds[top].length;
+      out.push('Your label <b>' + h(top) + '</b>' + (n > 1 ? ' and ' + plural(n - 1, 'label') + ' under it fold' : ' folds') + ' into ' + h(by[top].hand.into) + ': the mail moves, inbox and archived, then the old ' + many(n, 'label is', 'labels are') + ' deleted.');
+    });
+    if (hk.adoptLabels.length) out.push(plural(hk.adoptLabels.length, 'label') + ' of yours become' + many(hk.adoptLabels.length, 's', '') + ' the board\'s, as ' + many(hk.adoptLabels.length, 'it is', 'they are') + ': ' + hk.adoptLabels.slice(0, 4).map(h).join(', ') + (hk.adoptLabels.length > 4 ? '…' : '') + '.');
+    if (left.length) out.push(plural(left.length, 'label') + ' Labelboard made for an earlier layout: the mail moves to where each card is now (' + left.slice(0, 2).map(function (m) { return h(m.from) + ' → ' + h(m.to); }).join(', ') + (left.length > 2 ? ', …' : '') + '), then ' + many(left.length, 'it is', 'they are') + ' deleted.');
+    if (tidy) out.push(plural(tidy, 'more left-over label') + ' ' + many(tidy, 'is', 'are') + ' deleted if no mail has ' + many(tidy, 'it', 'them') + '.');
+    if (hk.blocked.length) out.push('<span class="lb-block">' + plural(hk.blocked.length, 'label') + ' of yours stay' + many(hk.blocked.length, 's', '') + ' where ' + many(hk.blocked.length, 'it is', 'they are') + ': a filter of yours adds ' + many(hk.blocked.length, 'it', 'them') + ' and Labelboard can\'t take it over.</span>');
+    return { lines: out, moves: hk.moves.length, handed: hk.handover.length };
   }
   // Review in plain words: what Apply changes and what it leaves alone. Filter numbers come from the same
   // LabelboardSync.filterActions the server runs, against your filters as read on load.
@@ -1026,7 +1057,7 @@
         .filter(Boolean).join(', ') + (fa.skipped.length ? '. ' + plural(fa.skipped.length, 'filter') + ' you deleted in Gmail stay' + (fa.skipped.length === 1 ? 's' : '') + ' out' : '');
     }
     var newLabels = g.labels ? plan.labels.filter(function (l) { return g.labels.indexOf(l.name) < 0; }).length : null;
-    var yours = (g.filters || []).filter(function (f) { return !f.owned && plan.adopt.indexOf(f.id) < 0; }).length;
+    var yours = (g.filters || []).filter(function (f) { return !f.owned && plan.adopt.indexOf(f.id) < 0; }).length, house = houseLines();
     return '<p class="rv-lead">Apply makes the Gmail filters, so new mail sorts itself from then on, and labels the mail in your inbox now.</p>' +
       '<h3 class="rv-h">What changes</h3><ul class="rv-list">' +
       li(plural(plan.labels.length, 'label') + (newLabels != null ? ' (' + fmt(newLabels) + ' new, the rest already in Gmail)' : '') + '.') +
@@ -1037,12 +1068,13 @@
         '. It goes from <b>' + fmt(st.before.inbox) + '</b> to <b>' + fmt(st.after.inbox) + '</b>.') +
       li(S.fs && S.fs.laterNew ? (later.length ? plural(later.length, 'card') + ' archive' + (later.length === 1 ? 's' : '') + ' mail later: Labelboard checks your inbox every hour and archives what is due (' + h(later.map(function (r) { return r.title; }).slice(0, 4).join(', ') + (later.length > 4 ? '…' : '')) + ').' : 'Archiving later stops' + (laterWas ? ' for the ' + plural(laterWas, 'card') + ' that had it' : '') + '.') : '') +
       li(nOff ? plural(nOff, 'thread') + ' lose a label Labelboard gave them before (' + h(plan.unlabel.map(function (e) { return e.label; }).join(', ')) + '): their card moved.' : '') +
+      house.lines.map(li).join('') + (house.lines.length ? '<li><button type="button" class="linkish" id="rv-labels">See every label in Labels</button></li>' : '') +
       '</ul><h3 class="rv-h">What doesn\'t change</h3><ul class="rv-list">' +
       li(done ? plural(done, 'inbox thread') + ' already ' + (done === 1 ? 'has its' : 'have their') + ' labels in Gmail: Apply leaves ' + (done === 1 ? 'it' : 'them') + ' as ' + (done === 1 ? 'it is' : 'they are') + '.' : '') +
-      li('Mail outside your inbox (archived, sent) keeps the labels it has. Re-sorting only touches the inbox threads in this read.') +
-      li(g.filters ? (yours ? 'Your own ' + plural(yours, 'filter') : 'Filters you make later') + ': Labelboard never edits or deletes them.' : 'Filters you made yourself: never edited or deleted.') +
-      li('Labels you made yourself are never taken off.') +
-      li('Nothing is deleted or sent, and Labelboard never opens message bodies.') + '</ul>';
+      li('Mail outside your inbox (archived, sent) keeps the labels it has' + (house.moves ? ', apart from the labels that move above' : '') + '. Re-sorting only touches the inbox threads in this read.') +
+      li(g.filters ? (yours ? 'Your own ' + plural(yours, 'filter') : 'Filters you make later') + ': Labelboard never edits or deletes them' + (house.handed ? ', unless one goes with a label you handed over' : '') + '.' : 'Filters you made yourself: never edited or deleted.') +
+      li('Labels you made yourself stay as they are' + (house.handed ? ', apart from the ones you handed over above' : '') + '. Hand one over in Labels.') +
+      li('No mail is deleted or sent, and Labelboard never opens message bodies.') + '</ul>';
   }
   // A filter's actions in words, and a label's (all its filters): "Label and skip inbox", "Label; some filters also star".
   function filterWords(f) {
@@ -1082,6 +1114,7 @@
       (applyOk ? '' : S.record.undo ? '<p class="note">Apply waits until the undo above finishes.</p>'
         : '<p class="note">Apply works once Labelboard runs as your Apps Script. Until then, download the filters and import them in Gmail: Settings, Filters and blocked addresses, Import filters.</p>');
     if ($('rv-reread')) $('rv-reread').onclick = function () { closeReview(); refresh().then(openReview); };
+    if ($('rv-labels')) $('rv-labels').onclick = function () { closeReview(); showView('labels'); };
     $('rv-xml').onclick = function () {
       var blob = new Blob([R.toGmailXml(plan, S.snapshot.account)], { type: 'application/xml' }), a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = 'labelboard-filters.xml'; a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
@@ -1217,7 +1250,7 @@
 
   // what settings.js needs from the board
   var SET = window.LabelboardSettings({
-    S: S, R: R, API: API, $: $, h: h, fmt: fmt, plural: plural, PALETTE: PALETTE, textOn: textOn, bandOf: bandOf, labelChip: labelChip,
+    S: S, R: R, API: API, $: $, h: h, fmt: fmt, plural: plural, PALETTE: R.PALETTE, textOn: textOn, bandOf: bandOf, labelChip: labelChip,
     bucket: bucket, rebuild: rebuild, render: render, renderBoard: renderBoard, renderRack: renderRack, save: save, load: load, toast: toast, said: said,
     unsave: function () { clearTimeout(saveTimer); }, ui: ui, applyUi: applyUi, openUndo: openUndo,
   });
@@ -1232,8 +1265,12 @@
     trace: trace, showView: showView, colStatus: colStatus, fsText: fsText, labelChip: labelChip, nameChip: nameChip, FUNNEL: FUNNEL,
     threadUrl: function (id, archived) { return 'https://mail.google.com/mail/u/?authuser=' + encodeURIComponent(S.snapshot.account) + '#' + (archived ? 'all' : 'inbox') + '/' + id; },
   });
+  var LABELS = window.LabelboardLabelsView({
+    S: S, API: API, $: $, h: h, fmt: fmt, plural: plural, hex: hex, textOn: textOn, bucket: bucket, labelChip: labelChip, view: view,
+    labelState: function () { return labelState(); }, rebuild: rebuild, render: render, save: save, toast: toast,
+  });
   var HOME = window.LabelboardHome({
-    S: S, $: $, h: h, fmt: fmt, plural: plural, bucket: bucket, bandOf: bandOf, ui: ui, rackBar: rackBar, colInfo: colInfo, showColumn: showColumn, openReview: openReview,
+    S: S, $: $, h: h, fmt: fmt, plural: plural, bucket: bucket, bandOf: bandOf, ui: ui, rackBar: rackBar, colInfo: colInfo, showColumn: showColumn, openReview: openReview, labelState: function () { return labelState(); },
     triage: function () { return TRIAGE.counts(); }, openTriage: function () { TRIAGE.open('unsorted'); }, since: function () { return S.visit && S.visit.since; },
   });
   boot();

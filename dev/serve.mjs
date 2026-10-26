@@ -18,12 +18,25 @@ const json = (f) => JSON.parse(fs.readFileSync(path.join(dataDir, f), 'utf8'));
 // Your Gmail filters as the server would report them, from existing_filters.json ({criteria, add[], remove[]},
 // label names): shown as yours unless an entry says `owned: true` (to preview the board after an Apply), `at` when it was made.
 // The labels of owned filters stand in for the labels Labelboard created (ownedLabels), the ones re-sorting may take off.
+// labels.json: { id: name } or { id: {name, color, owned, adopted, threads, messages} } (Gmail's colours and counts).
+const labelName = (v) => (typeof v === 'string' ? v : v.name);
+function labelFile() { return has('labels.json') ? Object.values(json('labels.json')).map((v) => (typeof v === 'string' ? { name: v } : v)) : null; }
 function gmail() {
   if (!fs.existsSync(path.join(dataDir, 'existing_filters.json'))) return {};
   const filters = json('existing_filters.json').map((f, i) => ({ ...Sync.normFilter({ id: f.id || 'local' + i, criteria: f.criteria, action: { addLabelIds: f.add, removeLabelIds: f.remove } }, {}), owned: !!f.owned, at: f.at || null, adopted: !!f.adopted }));
-  const labels = fs.existsSync(path.join(dataDir, 'labels.json')) ? Object.values(json('labels.json')) : undefined;
-  const ownedLabels = [...new Set(filters.filter((f) => f.owned).flatMap((f) => f.labels))];
-  return { filters, gone: [], labels, ownedLabels };
+  const file = labelFile(), labels = file ? file.map((l) => l.name) : undefined;
+  const ownedLabels = [...new Set(filters.filter((f) => f.owned).flatMap((f) => f.labels).concat((file || []).filter((l) => l.owned).map((l) => l.name)))];
+  const labelInfo = file ? file.map((l) => ({ name: l.name, color: l.color || null, type: 'user' })) : undefined;
+  return { filters, gone: [], labels, ownedLabels, adoptedLabels: (file || []).filter((l) => l.adopted).map((l) => l.name), labelInfo };
+}
+// Counts per label for the Labels view: labels.json's own, else what the snapshot and the window hold.
+function labelCounts() {
+  const file = labelFile() || [], mail = json('snapshot.json').threads.concat(has('recent.json') ? json('recent.json').threads : []), out = {};
+  file.forEach((l) => {
+    const ts = mail.filter((t) => t.labels.includes(l.name));
+    out[l.name] = { threads: l.threads != null ? l.threads : ts.length, messages: l.messages != null ? l.messages : ts.reduce((n, t) => n + (t.count || 1), 0) };
+  });
+  return out;
 }
 
 // Undo in the preview: Sync.planUndo, the server's own plan, applied to the files in this data folder (record.json
@@ -47,8 +60,8 @@ function undo({ kind, keep = [] }) {
   if (has('labels.json')) {
     const labels = json('labels.json'), used = new Set(threads.flatMap((t) => t.labels));
     Sync.childrenFirst(all ? [...new Set(owned)] : plan.labels).forEach((l) => {
-      const id = Object.keys(labels).find((k) => labels[k] === l);
-      if (id && !used.has(l) && !Object.values(labels).some((x) => x.startsWith(l + '/'))) { delete labels[id]; log.labels++; }
+      const id = Object.keys(labels).find((k) => labelName(labels[k]) === l);
+      if (id && !used.has(l) && !Object.values(labels).some((x) => labelName(x).startsWith(l + '/'))) { delete labels[id]; log.labels++; }
     });
     put('labels.json', labels);
   }
@@ -79,6 +92,10 @@ http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       const recent = fs.existsSync(path.join(dataDir, 'recent.json')) ? json('recent.json') : null; // the 30-day window's archived threads
       return res.end(JSON.stringify({ mode: 'preview', snapshot: json('snapshot.json'), config: json('config.json'), seeds: seeds(), gmail: gmail(), recent, record: has('record.json') ? json('record.json') : null }));
+    }
+    if (req.url === '/api/counts') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify(labelCounts()));
     }
     if (req.url === '/api/undo' && req.method === 'POST' && has('record.json')) {
       let body = '';

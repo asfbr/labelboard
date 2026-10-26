@@ -4,7 +4,7 @@ window.LabelboardHome = function (ctx) {
   'use strict';
   var S = ctx.S, I = window.LabelboardInsights, $ = ctx.$, h = ctx.h, fmt = ctx.fmt, plural = ctx.plural;
   var STEPS = [['read', 'Read'], ['sort', 'Sort'], ['apply', 'Apply'], ['answer', 'Answer']];
-  var VIEWS = [['board', 'Board'], ['flow', 'Flow'], ['filters', 'Filters'], ['overview', 'Overview'], ['threads', 'All threads'], ['priorities', 'Priorities']];
+  var VIEWS = [['board', 'Board'], ['flow', 'Flow'], ['filters', 'Filters'], ['overview', 'Overview'], ['threads', 'All threads'], ['priorities', 'Priorities'], ['labels', 'Labels']];
   var colorOf = function (b) { return ctx.bandOf(b) || (b.id === 'unsorted' ? 'var(--hatch)' : 'var(--muted)'); };
   var one = function (n, a, b) { return n === 1 ? a : b; };
 
@@ -106,6 +106,15 @@ window.LabelboardHome = function (ctx) {
       d.cols.forEach(function (c) { var m = Math.round(n * c.after / tot), lv = Math.round(n * c.leaves / tot); for (var k = 0; k < m && i < n; k++, i++) out += '<rect x="' + Math.floor(i / 6) * (s + 1) + '" y="' + (i % 6) * (s + 1) + '" width="' + (s - 0.5) + '" height="' + (s - 0.5) + '" rx="1" fill="' + colorOf(c.b) + '"' + (k >= m - lv ? ' opacity=".45"' : '') + '/>'; });
       return out;
     },
+    labels: function (d, W, H) { // a column's tag over its sub-labels in the lighter shade
+      var cols = d.cols.filter(function (c) { return c.b.label && c.b.color; }).slice(0, 4), cw = W / Math.max(1, cols.length), rh = H / 4.6;
+      return cols.map(function (c, i) {
+        var x = i * cw, bg = colorOf(c.b), sh = window.LabelboardRules.shadeOf(c.b.color), lt = sh ? sh.backgroundColor : 'var(--hatch)';
+        return '<rect x="' + x + '" y="0" width="' + (cw - 6) + '" height="' + rh + '" rx="2" fill="' + bg + '"/>' + [1, 2, 3].map(function (k) {
+          return '<rect x="' + (x + 6) + '" y="' + (k * rh * 1.2) + '" width="' + (cw - 12 - k * 4) + '" height="' + rh + '" rx="2" fill="' + lt + '"/>';
+        }).join('');
+      }).join('');
+    },
     priorities: function (d, W, H) { // how long they have waited
       var ag = d.pr.ages, A = [ag.week, ag.month, ag.quarter, ag.older], max = Math.max.apply(null, A.concat(1)), bh = H / 5;
       return A.map(function (n, i) { return '<rect x="0" y="' + (i * bh * 1.3) + '" width="' + Math.max(n ? 3 : 0, W * n / max) + '" height="' + bh + '" rx="2" fill="var(--accent)" opacity="' + [1, .7, .45, .25][i] + '"/>'; }).join('');
@@ -120,7 +129,13 @@ window.LabelboardHome = function (ctx) {
       : v === 'filters' ? (d.filters ? [fmt(d.filters.all), one(d.filters.all, 'Gmail filter', 'Gmail filters') + ', ' + fmt(d.filters.ours) + ' of them Labelboard\'s' + (d.filters.make ? '; ' + fmt(d.filters.make) + ' made on Apply' : ''), 'how labels got there'] : ['–', 'Gmail\'s filters weren\'t read', 'how labels got there'])
       : v === 'overview' ? [d.people.inbox ? Math.round(100 * d.people.people / d.people.inbox) + '%' : '–', 'of your inbox is from people', 'who fills your inbox']
       : v === 'threads' ? [fmt(st.before.inbox), 'inbox threads' + (out ? ', +' + fmt(out) + ' archived' : ''), 'every thread, by card']
+      : v === 'labels' ? labelsSaid()
       : [fmt(d.pr.waiting.length), one(d.pr.waiting.length, 'thread waits', 'threads wait') + ' on your answer', d.pr.waiting.length ? hours(d) + ' to clear' : 'nothing waits on you'];
+  }
+  function labelsSaid() {
+    var ls = ctx.labelState(); if (!ls) return ['–', 'Gmail\'s labels weren\'t read', 'colours and folders'];
+    var n = function (k) { return ls.rows.filter(function (r) { return r.kind === k; }).length; }, left = n('leftover');
+    return [fmt(ls.rows.length), one(ls.rows.length, 'label', 'labels') + ' in Gmail, ' + fmt(n('yours')) + ' of them yours', left ? plural(left, 'label') + ' left over' : 'colours and folders'];
   }
   function doors(d) {
     return '<nav class="hm-doors" aria-label="Views">' + VIEWS.map(function (v) {

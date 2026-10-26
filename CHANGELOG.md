@@ -3,6 +3,19 @@
 One section per version, newest first; changes not released yet go under `## Unreleased` at the top. Each version is one Apps Script deploy, and the release zip of
 the same tag holds its `dist/`. v0.0.1 to v0.0.8 went out labelled v0.1 to v0.8.0 and were renumbered.
 
+## v0.0.27 · 26 Oct 2026
+- A *Labels* tab: every label in your Gmail, in the colour Gmail shows it, under the board's columns or
+  as yours. Fold a label of yours into a column (its mail moves, inbox and archived, onto the same
+  sub-labels there, and a filter of yours that adds it goes with it) or let the board take it as it is;
+  a top-level one becomes a column. Nothing of yours changes until you pick it and apply.
+- Labels Labelboard made for an earlier layout (a renamed column, folders reorganised) are listed as left
+  over: Apply moves their mail to where each card is now and deletes them; empty ones are just deleted.
+- Colours: a column's label keeps its colour, its sub-labels and folders get a lighter shade of it. The
+  folders in between (`_Portfolio/Fund I`) no longer come out grey. Columns that look alike are flagged
+  with a colour to switch to.
+- Undo puts moved mail and deleted labels back, message by message, with their colours.
+- Home: a Labels door; a four-digit count no longer runs into its text.
+
 ## v0.0.26 · 21 Oct 2026
 - *Gmail now* and *After Apply* under the board match when Apply has nothing to change. Mail with no
   label now shows as Unsorted or Keep in inbox in both bars, and a thread with two column labels counts

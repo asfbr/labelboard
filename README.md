@@ -35,7 +35,7 @@ and sorts the mail already sitting in your inbox.
 
 ## See your inbox from every side
 
-Labelboard opens on Home, and next to the board are five views of the same decisions:
+Labelboard opens on Home, and next to the board are six views of the same decisions:
 
 | View | What it answers |
 |---|---|
@@ -45,6 +45,7 @@ Labelboard opens on Home, and next to the board are five views of the same decis
 | **Overview** | Who fills your inbox? Bubbles per sender or company, grouped by column, plus who writes the most and your inbox threads by month of their last message. |
 | **All threads** | Every inbox thread as one square, on one screen. Hover to read it, click to open its card. Color by column or by age. |
 | **Priorities** | What waits on you? Threads from people where the last message is theirs, most pressing first, how long they've waited, the time to clear them at your pace, and the automated mail still cluttering the inbox. Below, your replies over the last 30 days: how many threads you answered, how fast, per column, and what you archived without answering. |
+| **Labels** | What's in your Gmail sidebar? Every label in Gmail's colours: the board's under their columns, labels left over from an earlier layout, and yours. Hand one of yours over (fold it into a column, or let the board take it as it is), clear the leftovers, and fix column colours that look alike. |
 
 ![Home: the next step in big type, what else waits beside it, what came in since you last looked, and a small picture of each view](docs/screenshots/home.png)
 
@@ -64,7 +65,7 @@ Labelboard opens on Home, and next to the board are five views of the same decis
   the board too (off in one click in Priorities).
 - **Nothing happens without Apply.** Reading, dragging and every view are read-only. Apply creates
   labels and filters and sorts inbox threads. It never sends mail, and deletes only what you set a card
-  to delete. The one thing that runs while you're away is the hourly *Archive it later*, only while a
+  to delete, plus labels: its own once nothing uses them, and one of yours only after you hand it over. The one thing that runs while you're away is the hourly *Archive it later*, only while a
   card asks for it.
 - **Open source.** Every line that touches your mail is in this repo.
 
@@ -94,9 +95,13 @@ signed-in accounts) and how to update or remove it.
    optional AI read, or newsletter and notification patterns. Unclear ones wait in *Unsorted*.
 4. **Board.** Drag cards between columns (or focus one and press Shift + ← →). Each column has a label
    color and a *Skip inbox* switch.
-5. **Review and apply.** Labels are created or recolored, filters are compared with the ones Labelboard
-   owns, then the threads already in your inbox get their labels (one batch call per label). Labels
-   Labelboard created come off inbox threads whose card moved; labels you made never do.
+5. **Review and apply.** Labels are created or recolored (a column's label its colour, sub-labels and
+   folders a lighter shade), filters are compared with the ones Labelboard owns, then the threads already
+   in your inbox get their labels (one batch call per label). Labels Labelboard created come off inbox
+   threads whose card moved. Last, labels move: one Labelboard made for an earlier layout hands its mail
+   to where the card is now, and a label of yours you chose to fold into a column hands over its mail,
+   inbox and archived; then the old label is deleted. Labels you made are never touched until you hand
+   one over in *Labels*, and Undo puts it back.
 
 Gmail runs *every* matching filter, and the board does the same: a thread gets every label whose rule
 matches, and leaves the inbox if any of them skips the inbox.

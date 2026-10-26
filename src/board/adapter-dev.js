@@ -7,6 +7,9 @@ window.LabelboardAPI = {
     return fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config, null, 1) })
       .then(function (r) { if (!r.ok) throw new Error(r.statusText); });
   },
+  counts: function () {
+    return fetch('/api/counts').then(function (r) { if (!r.ok) throw new Error(r.statusText); return r.json(); });
+  },
   // Undo on the data folder's files (record.json), in one go: the server's plan, without Gmail.
   undo: function (kind, keep, onProgress) {
     if (onProgress) onProgress({ done: 0, total: 1, text: kind === 'all' ? 'Removing what Labelboard made…' : 'Undoing the Apply…' });

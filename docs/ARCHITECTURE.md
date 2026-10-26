@@ -15,6 +15,7 @@ Nothing syncs on its own: there are no triggers or background jobs (why: `CLAUDE
   inbox drop out. The header keeps how the last read went (`snapshot.read`); Review warns after an hour.
 - **Your Gmail labels** feed card suggestions ("you labeled 80% as X"). A column's own label counts by
   itself; *Your labels* maps the others (`config.labelMap`, by top-level label; null switches one off).
+  The *Labels* view shows all of them and lets you hand one over (below: Labels).
 - **Filter status on the board.** `rules.js planFilters` (the plan's filters without the inbox backfill,
   ~10 ms) and `LabelboardSync.filterStatus` run on every move: each column head, card drawer and the
   Review button's count say whether a label's filters are live in Gmail, made, changed or removed on
@@ -50,12 +51,42 @@ Nothing syncs on its own: there are no triggers or background jobs (why: `CLAUDE
   until you restore it, instead of quietly writing it again; an edited one becomes yours. Not checked
   live: whether Gmail's own "edit filter" keeps the id (either way it is caught).
 - **Apply** (Review changes) is the only write, besides its undo (below): labels, filters (diffed through `LabelboardSync.
-  filterActions`, the same function Review uses), then the inbox threads of the snapshot by id.
-- **Re-sort.** A label Labelboard created (`ownedLabels`, an id list in one property: fine to ~400
-  labels, then it needs the chunked blob too) that an inbox thread carries but the board
+  filterActions`, the same function Review uses), then the inbox threads of the snapshot by id, then
+  labels moved (below: Labels).
+- **Re-sort.** A label Labelboard created (`ownedLabels`, an id list in one property: fine to ~400 labels,
+  then it needs the chunked blob too; labels of yours it took as they are, `adoptedLabels`, are left out:
+  they carry mail no card gives) that an inbox thread carries but the board
   no longer gives it comes off on Apply (a card moved, a column renamed). Labels you made never come
-  off, including pre-existing labels used as column labels. Archived mail (even in the window) is never written and
-  keeps its labels (not built: re-sorting it needs a Gmail search per moved card).
+  off, including pre-existing labels used as column labels, until you hand one over. Archived mail (even
+  in the window) is never re-sorted (not built: it needs a Gmail search per moved card); only a label
+  move reaches it.
+
+## Labels: colours, leftovers, hand-over (Oct 2026)
+The board used to build its `_` tree next to yours and never look at the rest of the sidebar: folders came
+out grey, every layout change left the old labels behind, and `Portfolio/V1/Acme` sat beside
+`_Portfolio/V1/Acme`. `src/labels.js` (pure, Node-tested) now sorts Gmail's labels against the board.
+- **What a label is** (`classify`): a column's own, the board's (in `layout`: every label a card or
+  contact *would* get, mail or not, since `planFilters` makes a company's label only once it has mail in
+  the read), left over (owned, not in the layout), or yours. `gmailState_` sends `labelInfo` (name,
+  colour) and `adoptedLabels`; counts come from `labelCounts` (`labels.get` per label, when the view opens).
+- **Colours** (`rules.js labelColor`): a column's label its colour, everything under it, folders
+  included, the palette's lightest shade of that hue with its darkest as text. `buildPlan` emits the
+  folders in between, so the server never makes a grey one; `plan.recolor` fixes labels the plan leaves
+  out (a company with no mail in this read). Columns closer than ΔE 15 are flagged with a free colour.
+- **Leftovers** go to the one layout label they name (same last part, case and accents aside: `_M&A/Orbit`
+  → `_M&A/Deals/Orbit` after a restructure), else are deleted only if empty. `config.leftovers` overrides.
+- **Hand-over** (`config.handover`): *fold into* a column (each label lands on the same path there, or the
+  one label it names; `Buyers` folds onto `_M&A/Buyers`) or *take it as it is* (a top-level one becomes a
+  column). A filter of yours that adds a folded label is adopted with its label rewritten; one Labelboard
+  can't adopt (it forwards, adds two labels) blocks the fold. Names are matched ignoring case: unverified
+  whether Gmail itself refuses `Northwind` next to `NorthWind`.
+- **Moves** (`Code.js moveLabels_`, the last Apply phase): per label, children first, its message ids
+  (spam and trash too) are listed and recorded before the first change, then moved 500 per
+  `batchModify`, then the label is deleted unless labels remain under it. Only owned labels and names in
+  `plan.handover` move. The record keeps every id so undo is exact per message; past `Sync.MOVE_CAP`
+  (4,000 messages in one Apply, ~70 KB of the 500 KB) Apply stops with a plain message.
+- **Scopes:** none added. `labels.delete`, `labels.create` and `messages.batchModify` were already in use
+  under `gmail.modify` (undo, Apply).
 
 ## Undo and the apply record (Oct 2026, session 3)
 - **The record** (user-property blob `record`; a key starting with `apply` would land in the 6 h cache):
@@ -64,8 +95,8 @@ Nothing syncs on its own: there are no triggers or background jobs (why: `CLAUDE
   changed), by label name: `labelled` (threads it labels; the board sends each skip-inbox backfill's
   `had`, threads that already carried the label, so undo never takes off a label a thread had before),
   `archived`, `unlabeled` (re-sort). `Code.js` adds `labelsCreated`, `recolored` (the colour before the
-  first change), `filtersCreated` (id, label, archive), `filtersRemoved` (spec) and `adopted` as each
-  happens; `done` at the end. An Apply run again after it stopped merges into the stopped entry.
+  first change), `filtersCreated` (id, label, archive), `filtersRemoved` (spec), `adopted`, `labelsAdopted`
+  and `moved` ({from, to, colour, owned, ids, had}) as each happens; `done` at the end. An Apply run again after it stopped merges into the stopped entry.
 - **Undo this Apply** reverses the last entry, once (then only *Remove everything* goes further back).
   **Remove everything** reverses every entry, deletes every owned filter and deletes every owned label
   that ends up empty. `Sync.planUndo` composes entries newest first, oldest wins per thread and label.
@@ -74,8 +105,10 @@ Nothing syncs on its own: there are no triggers or background jobs (why: `CLAUDE
   are made again, as Labelboard's; adopted ones handed back: `adopted` on the owned spec, plus the
   board's `config.adopted` matches for filters adopted before the flag), then mail a new skip-inbox
   filter kept out since the Apply (`threads.list` on the label, `-in:inbox after:<epoch s>`: back in the
-  inbox, label kept, since it may be yours), then one `threads.modify` per thread with all its changes,
-  then colours back and created labels deleted when `labels.get` says no threads, children first.
+  inbox, label kept, since it may be yours), then moved labels back (`unmove_`: a deleted one made again
+  with its colour, parents first; its messages get it back and lose the new one unless they `had` it),
+  then one `threads.modify` per thread with all its changes, then labels of yours taken as they are handed
+  back, colours back and created labels deleted when `labels.get` says no threads, children first.
 - **Not reversed:** a filter handed back (*Hand it back*) stays yours: re-owning it would make the next
   Apply delete it, since the board no longer lists it. A filter you edited in Gmail since is yours
   (`reconcile`) and stays. Mail you labelled with a Labelboard label yourself keeps it, so the label stays.
