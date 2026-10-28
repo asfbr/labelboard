@@ -275,12 +275,12 @@ window.LabelboardViews = function (ctx) {
       var groups = c.cards.map(function (k) {
         var match = hit(k.title);
         var cells = k.threads.map(function (p) {
-          var t = p.t; if (p.leaves) leaves++;
+          var t = p.t; if (p.out) leaves++;
           var on = match || hit(t.from) || hit(t.subject);
-          return '<i class="cell' + (p.leaves ? ' leaves' : '') + (mode === 'age' ? ' a' + ageOf(t) : '') + (on ? '' : ' dim') + '"' +
+          return '<i class="cell' + (p.out ? ' leaves' : '') + (mode === 'age' ? ' a' + ageOf(t) : '') + (on ? '' : ' dim') + '"' +
             tip('<b>' + h(t.subject || '(no subject)') + '</b><br>' + h(t.fromName ? t.fromName + ' · ' + t.from : t.from) + '<br>' + h(day(t.date)) +
               (t.count > 1 ? ' · ' + t.count + ' messages' : '') + (I.waitsSince(t) == null ? ' · answered' : '') +
-              '<br>' + h(k.title) + ' → ' + h(c.bucket.name) + (p.leaves ? ', skips the inbox' : '')) + '></i>';
+              '<br>' + h(k.title) + ' → ' + h(c.bucket.name) + (p.later ? ', leaves the inbox within the hour after Apply' : p.leaves ? ', skips the inbox' : '')) + '></i>';
         }).join('');
         return '<span class="tg"' + (k.key ? ' data-card="' + h(k.key) + '" tabindex="0" role="button" aria-label="' + h(k.title + ', ' + plural(k.threads.length, 'thread')) + '"' : '') + '>' + cells + '</span>';
       }).join('');
@@ -295,7 +295,7 @@ window.LabelboardViews = function (ctx) {
 
   // ---------- Priorities ----------
   function prioritiesHtml() {
-    var p = I.priorities(S.snapshot, S.built, S.config, Date.now()), pace = Number(ctx.ui().pace) || 2;
+    var o = ctx.prioOpts(), p = I.priorities(S.snapshot, S.built, S.config, Date.now(), o), pace = Number(ctx.ui().pace) || 2;
     if (!p.inbox) return head('Priorities', 'Nothing in your inbox to show.');
     var list = p.waiting.filter(function (w) { return hit(w.title) || hit(w.t.from) || hit(w.t.subject); });
     var mins = p.waiting.length * pace, hours = mins / 60, old = S.snapshot.threads.filter(function (t) { return !t.msgs; }).length;
@@ -305,7 +305,7 @@ window.LabelboardViews = function (ctx) {
         { n: pct(p.answered, p.people), l: 'of threads from people are answered' }, { n: fmt(p.machineStays), l: 'automated, still in your inbox after sorting' }]) +
       '<div class="pr-grid"><div><h3 class="v-h">Time to clear</h3><p class="pr-time"><b>' + (hours >= 1 ? (Math.round(hours * 10) / 10) + ' hours' : Math.round(mins) + ' minutes') + '</b> to go through ' + plural(p.waiting.length, 'thread') +
       ' at <label><input id="pr-pace" type="number" min="0.5" max="30" step="0.5" value="' + pace + '"> min</label> each.</p>' +
-      '<p class="note">Your own pace, not a norm: published benchmarks for this are mostly vendor surveys. Archiving or labelling with Skip inbox removes threads from this count.</p>' +
+      '<p class="note">Your own pace, not a norm: published benchmarks for this are mostly vendor surveys. Archiving, or a column that leaves the inbox (right away, after some days or once read), removes threads from this count.</p>' +
       '<h3 class="v-h">How long they have waited</h3><ul class="pr-ages">' + A.map(function (a, i) {
         var n = p.ages[a[0]];
         return '<li><span>' + a[1] + '</span><span class="ov-bar"><i class="a' + i + '" style="width:' + (100 * n / amax).toFixed(1) + '%"></i></span><span class="ov-n">' + fmt(n) + '</span></li>';
@@ -313,14 +313,21 @@ window.LabelboardViews = function (ctx) {
       (p.noise.length ? '<h3 class="v-h">Automated mail that stays in your inbox</h3><ul class="pr-noise">' + p.noise.map(function (x) {
         return '<li><button type="button" class="linkish" data-card="' + h(x.key || '') + '">' + h(x.title) + '</button><span class="note">' + h(nameOf(x.bucket)) + '</span><span class="ov-n">' + fmt(x.n) + '</span></li>';
       }).join('') + '</ul><p class="note">Machine senders on cards that stay in the inbox. Open one to send single threads, or the whole card, to a column that skips the inbox.</p>' : '') +
-      '</div><div><h3 class="v-h">Start here</h3><ol class="pr-list">' + list.slice(0, 40).map(function (w) {
+      '</div><div><h3 class="v-h">Start here</h3>' + prioPicks(p, o) + '<ol class="pr-list" id="pr-start">' + list.slice(0, 40).map(function (w) {
         var t = w.t, star = t.labels.indexOf('STARRED') >= 0;
         return '<li><a href="' + h(ctx.threadUrl(t.id)) + '" target="_blank" rel="noopener" class="pr-row">' +
           '<span class="pr-subj">' + (star ? '<span class="star" aria-label="Starred">★</span> ' : '') + h(t.subject || '(no subject)') + '</span>' +
-          '<span class="pr-meta"><span class="dot" style="background:' + colorOf(w.bucket) + '"></span>' + h(w.title || nameOf(w.bucket)) + ' · ' + h(t.fromName || t.from) + ' · ' + h(ago(w.days)) + '</span></a></li>';
+          '<span class="pr-meta"><span class="dot" style="background:' + colorOf(w.bucket) + '"></span>' + h(w.title || nameOf(w.bucket)) + ' · ' + h(t.fromName || t.from) + ' · ' + h(ago(w.days)) + '</span></a>' +
+          '<button type="button" class="pr-hide" data-hide="' + h(t.id) + '" data-date="' + h(t.date) + '" title="Hide it until a new message comes in" aria-label="' + h('Hide ' + (t.subject || 'this thread')) + '">Hide</button></li>';
       }).join('') + '</ol>' + (list.length > 40 ? '<p class="note">Showing 40 of ' + fmt(list.length) + '. Find a sender above to narrow it.</p>' : '') + '</div></div>' +
       '<p class="note">These counts cover your inbox. A thread waits on you when its last message is someone else\'s' +
       (old ? '; for ' + plural(old, 'thread') + ' read before Labelboard kept each message\'s time, any message of yours in it counts as an answer' : '') + '.</p>' + repliesHtml();
+  }
+  // Over the list: the colleagues switch (once colleague-only threads wait, or it's on) and what you hid.
+  function prioPicks(p, o) {
+    var sw = p.colleagues || o.colleaguesOut ? '<label class="check"><input type="checkbox" id="pr-colleagues"' + (o.colleaguesOut ? ' checked' : '') + '> Leave out threads with only colleagues on them' + (p.colleagues ? ' (' + fmt(p.colleagues) + ')' : '') + '</label>' : '';
+    var hid = p.hidden ? '<p class="note">' + plural(p.hidden, 'thread') + ' hidden until a new message comes in. <button type="button" class="linkish" id="pr-unhide">Show ' + (p.hidden > 1 ? 'them' : 'it') + ' again</button></p>' : '';
+    return sw || hid ? '<div class="pr-picks">' + sw + hid + '</div>' : '';
   }
   var dur = function (s) { return s < 3600 ? Math.max(1, Math.round(s / 60)) + ' min' : s < 172800 ? Math.round(s / 3600) + ' h' : (Math.round(s / 8640) / 10) + ' days'; };
   // Your replies over the last 30 days, inbox and archived: needs the window read, offered here first.
@@ -364,6 +371,14 @@ window.LabelboardViews = function (ctx) {
   function wirePriorities() {
     var w = $('pr-window'); if (w) w.onclick = function () { ctx.refresh({ window: true }); };
     var off = $('pr-window-off'); if (off) off.onclick = function () { ctx.windowOff(); };
+    var cl = $('pr-colleagues'); if (cl) cl.onchange = function () { if (this.checked) ctx.ui().colleaguesOut = true; else delete ctx.ui().colleaguesOut; ctx.save(); render('priorities'); $('pr-colleagues').focus(); };
+    var un = $('pr-unhide'); if (un) un.onclick = function () { delete ctx.ui().hidden; ctx.save(); render('priorities'); };
+    var st = $('pr-start'); if (st) st.onclick = function (e) {
+      var b = e.target.closest('[data-hide]'); if (!b) return;
+      var i = Array.prototype.indexOf.call(this.children, b.parentNode), u = ctx.ui();
+      (u.hidden = u.hidden || {})[b.dataset.hide] = b.dataset.date; ctx.save(); render('priorities');
+      var next = document.querySelectorAll('#pr-start .pr-hide'), go = next[Math.min(i, next.length - 1)] || $('pr-unhide'); if (go) go.focus(); // keep the keyboard where it was
+    };
     var el = $('pr-pace'); if (!el) return;
     el.onchange = function () { var v = Number(this.value); if (v > 0) { ctx.ui().pace = v; ctx.save(); render('priorities'); $('pr-pace').focus(); } };
   }

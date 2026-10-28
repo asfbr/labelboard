@@ -97,6 +97,11 @@ tab's swatches. A sub-label chip uses the column hue's lightest shade, as Gmail 
   opens Review), "undone …" after an undo, or a `--danger` "undo stopped". Review leads with that Apply
   in a `--raised` box with *Undo this Apply…* (a `--danger` outline button). Undo and Remove everything
   confirm in the Review sheet: *What goes back* / *What stays* in numbers, a filled `--danger` button.
+- A read over an hour old catches up on its own (opening, or coming back to the tab): the meta's read
+  becomes *Reading what changed…* in `--accent` bold over a 2px crawling dash, Review and *Read mail again*
+  wait, and a toast says "Caught up: N threads new or changed" when anything did.
+- Keys: `/` search (from Home it opens the board), `1`–`5` the tabs, `?` the *Keys* sheet (a key column of
+  `kbd`s, what it does beside). Not while typing in a field, nor over a sheet or the drawer.
 - The rack goes slim (numbers inline, 8px bar, no key) while a long column is scrolled, and opens again
   at its top.
 - Compact cards (the Cards pick) keep title, count and sub-label; kind and reason hide.
@@ -132,6 +137,9 @@ Everything counts the inbox; archived mail (the 30-day window) is only ever a su
 inbox +99 archived". A card whose mail is all archived shows that count muted, with "all archived".
 The Gmail tab is the one exception: its bands include archived mail (that is what it shows). "Answered" has one definition everywhere: the last message in the
 thread is yours (`insights.js waitsSince`), counted over threads from people.
+"After you apply" counts what leaves the inbox either way: Apply's skip inbox, or the first hourly run of a
+column that leaves after N days or once read (`threadPlace().out`); both are hatched, and the rack says "N
+more leave within the hour after".
 
 ## Triage
 *Sort N unsorted cards one by one* (in the rack, beside "still unsorted") opens a centred sheet over
@@ -188,6 +196,9 @@ dims what doesn't match, and the *Show* pick and the drag hint hide.
   the older mail as one share bar, a dotted line on the day Labelboard made the filter.
 - **Inbox**: *Who writes* (bubbles by column, top writers, months), *Every thread* and *By age* (a square per
   thread), one segmented pick.
+- **Priorities**: *Start here* rows carry a quiet *Hide* pill (shown on hover or focus, always without hover):
+  hidden until a newer message, kept in `config.ui.hidden`. Over the list, a checkbox to leave out threads with
+  only colleagues on them (once any wait) and "N hidden · Show them again". Home's count follows both.
 - Avatars are initials on the column colour. No logos yet (they would send sender domains to a favicon
   service; see the roadmap).
 

@@ -4,6 +4,16 @@ One section per version, newest first; changes not released yet go under `## Unr
 the same tag holds its `dist/`. v0.0.1 to v0.0.8 went out labelled v0.1 to v0.8.0 and were renumbered.
 
 ## Unreleased
+
+## v0.0.29 · 28 Oct 2026
+- The board catches up on its own: open it (or come back to its tab) with a read over an hour old and it
+  reads what changed while you look at the last one. The header says *Reading what changed…*; Review and
+  *Read mail again* wait the few seconds it takes.
+- Priorities remembers: *Hide* on a thread that waits on you keeps it off the list until a new message
+  comes in, and a checkbox leaves out threads with only colleagues on them. Home counts the same.
+- Keys: `/` to search, `1`–`5` for the tabs, `?` for the list of every key.
+- A column that leaves the inbox after some days or once read now counts that mail as leaving in the
+  numbers (hatched in the rack, "N more leave within the hour after"), not as staying.
 - Colleague mail is now two cards: **Only colleagues** (nobody outside on it) and **Colleagues with
   people outside**. Gmail filters can't tell who else is on a thread, so neither makes one: in a labelled
   column, Labelboard labels their new mail every hour and takes the label off a thread when someone outside

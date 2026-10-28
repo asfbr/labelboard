@@ -60,6 +60,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .meta .meta-link { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
 .meta .meta-link:hover { color: var(--ink); }
 .meta .meta-link.stale { color: var(--danger); }
+/* a quiet read on opening (app.js quietRead): accent words over a slim crawling stripe */
+.meta .reading { color: var(--accent); font-weight: 700; position: relative; }
+.meta .reading::after { content: ''; position: absolute; left: 0; right: 0; bottom: -4px; height: 2px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent) 0 8px, transparent 8px 14px); background-size: 14px 2px; animation: dash 1s linear infinite; }
+@keyframes dash { to { background-position: 14px 0; } }
 .btn[disabled] { opacity: .45; cursor: not-allowed; }
 
 /* the rack: inbox before → after, the one loud element */
@@ -359,6 +364,12 @@ a { color: var(--accent); }
 kbd { font: 700 11px/1 var(--mono); color: var(--muted); background: var(--raised); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; padding: 2px 5px; }
 .tr-keys { font-size: 12px; color: var(--muted); margin: 12px 0 0; }
 @media (hover: none) { .tr-keys, .tr-col kbd { display: none; } }
+/* the keys sheet (?): a key column and what it does */
+.keys-card { width: min(520px, 100%); }
+.keys-card h3 { font: 700 13px/1 var(--display); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 20px 0 8px; }
+.keys { display: grid; grid-template-columns: minmax(120px, max-content) 1fr; gap: 8px 16px; margin: 0; align-items: baseline; }
+.keys dt { white-space: nowrap; color: var(--muted); font-size: 12px; }
+.keys dd { margin: 0; }
 @media (max-width: 640px) { .tr-sample li:nth-child(n+4), .tr-more { display: none; } } /* the columns stay near the top */
 /* settings: a wide sheet, sections on the left (a scrolling row of pills on phones) */
 .sheet-card.wide { width: min(980px, 100%); height: calc(100vh - 32px); }
@@ -563,6 +574,15 @@ body:not([data-view="board"]) .board-only { display: none; }
 .pr-subj { font-weight: 700; overflow-wrap: anywhere; }
 .pr-meta { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .pr-meta .dot { width: 8px; height: 8px; }
+/* Hide on a waiting thread: quiet until the row is hovered or focused; always there without hover */
+.pr-list li { position: relative; }
+.pr-list li:has(.pr-hide) .pr-row { padding-right: 70px; }
+.pr-hide { position: absolute; right: 8px; top: 9px; font-size: 12px; padding: 2px 10px; border: 1px solid var(--rule); border-radius: var(--r-pill); background: var(--surface); color: var(--muted); cursor: pointer; opacity: 0; }
+.pr-list li:hover .pr-hide, .pr-hide:focus-visible { opacity: 1; }
+.pr-hide:hover { color: var(--ink); border-color: var(--muted); }
+@media (hover: none) { .pr-hide { opacity: 1; } }
+.pr-picks { display: grid; gap: 4px; margin-bottom: 8px; }
+.pr-picks .note { margin: 0; }
 .star { color: var(--accent); }
 .pr-replies { margin-top: 28px; padding-top: 6px; border-top: 1px solid var(--rule); }
 .pr-optin p { max-width: 760px; }

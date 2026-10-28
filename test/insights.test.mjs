@@ -26,7 +26,7 @@ const total = (l) => l.reduce((s, x) => s + x.n, 0);
 test('places: one per inbox thread, the same answer the rack counts', () => {
   const ps = I.places(snapshot, built, config), st = R.stats(snapshot, built, config);
   assert.equal(ps.length, 8);
-  assert.equal(ps.filter((p) => !p.leaves).length, st.after.inbox);
+  assert.equal(ps.filter((p) => !p.out).length, st.after.inbox);
 });
 
 test('shift: inbox now → cards → after Apply, every layer adds up, and only what Apply changes counts as changed', () => {
@@ -117,6 +117,21 @@ test('priorities with timelines: a thread they answered after your reply waits o
   assert.equal(p.answered, 1, 'only cy@beta.com: yours is the last word');
   assert.equal(I.overview(live, b, config, NOW).answered, 1, 'Overview counts answered the same way, not by the SENT label');
   assert.deepEqual(p.waiting.map((w) => [w.t.from, w.days]), [['bob@acme.com', 1], ['dan@acme.com', 2], ['ana@acme.com', 3]]);
+});
+
+test('priorities that remember: a hidden thread stays out until a newer message, colleagues-only threads on a switch', () => {
+  const ana = T({ from: 'ana@acme.com', date: daysAgo(3) }), mia = { ...T({ from: 'mia@firm.com', date: daysAgo(1) }), to: ['me@firm.com', 'leo@firm.com'] };
+  const out = { ...T({ from: 'mia@firm.com', date: daysAgo(2) }), cc: ['ceo@acme.com'] }; // a colleague with someone outside stays
+  const snap = { threads: [ana, mia, out] }, b = R.buildCards(snap, config, []);
+  const from = (p) => p.waiting.map((w) => w.t.from).sort();
+  const all = I.priorities(snap, b, config, NOW);
+  assert.deepEqual([all.waiting.length, all.hidden, all.colleagues], [3, 0, 1]);
+  const hid = I.priorities(snap, b, config, NOW, { hidden: { [ana.id]: ana.date }, colleaguesOut: true });
+  assert.deepEqual([from(hid), hid.hidden, hid.colleagues], [['mia@firm.com'], 1, 1]);
+  assert.equal(hid.ages.week + hid.ages.month + hid.ages.quarter + hid.ages.older, 1);
+  assert.deepEqual([hid.people, hid.answered], [all.people, all.answered], 'the answered share stays one definition');
+  const newer = I.priorities({ threads: [{ ...ana, date: daysAgo(0) }, mia, out] }, b, config, NOW, { hidden: { [ana.id]: ana.date } });
+  assert.equal(newer.hidden, 0, 'a new message brings it back');
 });
 
 test('replies over 30 days: inbox and archived, people only, answered = last word yours, median answer time', () => {

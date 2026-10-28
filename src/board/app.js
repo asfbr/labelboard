@@ -9,13 +9,17 @@
   var fmt = function (n) { return Number(n).toLocaleString('en-US'); };
   var plural = function (n, one, many) { return fmt(n) + ' ' + (n === 1 ? one : many || one + 's'); };
 
-  function load() {
+  // keep === true: hold on to the settings on the page (changed while a quiet read ran; their save is on its way).
+  // Strictly true, since .then(load) hands it a server reply.
+  function load(keep) {
     return API.load().then(function (st) {
-      S.snapshot = st.snapshot; S.config = st.config; S.seeds = st.seeds || []; S.mode = st.mode; S.gmail = st.gmail || {}; S.recent = st.recent || null;
+      var first = opening();
+      S.snapshot = st.snapshot; S.config = keep === true ? S.config : st.config; S.seeds = st.seeds || []; S.mode = st.mode; S.gmail = st.gmail || {}; S.recent = st.recent || null;
       S.record = st.record || { applies: [] }; S.canUndo = !!(API.undo && st.record); // the preview undoes only with a record.json
       S.config.cards = S.config.cards || {};
       visit(); applyUi(); rebuild(); render();
       if (opening()) { clearTimeout(slow); $('shell').classList.remove('is-loading'); $('progress').hidden = true; }
+      if (first) quietRead();
     }).catch(function (e) {
       if (!opening()) return oops(e, 'The board could not load. Nothing in Gmail changed. Reload the page to try again.', 9000);
       if (!said(e)) console.error(e);
@@ -33,6 +37,19 @@
     return load();
   }
   $('btn-retry').onclick = boot;
+  // A read over an hour old catches up on its own, on opening and on coming back to the tab: the incremental read
+  // (seconds) while the board shows the old one, "Reading what changed…" in the header. Not over another job or Review.
+  function quietRead() {
+    if (!API.refresh || S.reading || !S.snapshot.threads.length || !R.readAge(S.snapshot.generatedAt, Date.now()).stale || !$('progress').hidden || !$('review').hidden) return;
+    var edits = S.edits;
+    S.reading = true; renderMeta();
+    return API.refresh(null).then(function (r) {
+      return load(S.edits !== edits).then(function () { if (r && r.kept && r.fetched) toast('Caught up: ' + plural(r.fetched, 'thread') + ' new or changed since the last read.', 5000); });
+    }).catch(function (e) { if (said(e)) toast('The board shows the last read. ' + said(e), 8000); else console.error(e); }) // the header stays red: Read mail again is there
+      .then(function () { S.reading = false; renderMeta(); });
+  }
+  function reading() { if (S.reading) toast('Labelboard is reading what changed. Try again in a few seconds.'); return !!S.reading; }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && S.snapshot && !opening()) quietRead(); });
   // Errors say what stopped, what's safe, what to do (docs/BRAND.md rule 6). An error that already says it in
   // plain words (e.plain, or a server message starting "Labelboard: ") is shown; anything else goes to the console.
   function said(e) {
@@ -45,7 +62,7 @@
     toast(msg, ms || 8000);
   }
   // config.ui: { theme: system|light|dark, density: roomy|compact, collapsed: [column ids], home: now|gallery|tags,
-  // open: home|board|last, seen: the read you saw last }, saved with the settings
+  // open: home|board|last, seen: the read you saw last, hidden / colleaguesOut: Priorities' (prioOpts) }, saved with the settings
   function ui() { return S.config.ui = S.config.ui || {}; }
   // The first load of a visit picks what opens and keeps the read seen last time, for Home's "since"; every load marks this read seen.
   function visit() {
@@ -142,11 +159,12 @@
     var out = S.mail.threads.length - snap.threads.length, days = snap.window && snap.window.days || 30;
     $('meta').innerHTML = '<span>' + h(snap.account) + '</span>' + (!snap.threads.length ? '' : '<span>' + fmt(snap.threads.length) + ' inbox threads</span>' +
       (out ? '<span title="Mail of the last ' + days + ' days that is out of your inbox: archived by you or by a filter. Cards count it; the inbox numbers don\'t.">+' + fmt(out) + ' archived, last ' + days + ' days</span>' : '') +
-      '<span class="' + (age.stale ? 'stale' : '') + '" title="' + h(how) + '">read ' + (rd && rd.auto ? 'on its own ' : '') + h(age.text) + (rd ? ', ' + fmt(rd.fetched) + ' new or changed' : '') + '</span>' + appliedHtml()) +
+      (S.reading ? '<span class="reading" role="status">Reading what changed…</span>'
+        : '<span class="' + (age.stale ? 'stale' : '') + '" title="' + h(how) + '">read ' + (rd && rd.auto ? 'on its own ' : '') + h(age.text) + (rd ? ', ' + fmt(rd.fetched) + ' new or changed' : '') + '</span>') + appliedHtml()) +
       (S.mode === 'apps-script' ? '' : snap.source === 'demo' ? '<span class="pill" title="A made-up mailbox (dev/demo.mjs). Nothing here is real mail.">Demo: made-up mail</span>'
         : '<span class="pill" title="Changes save on this computer and Gmail is not touched. To see new mail, ask Claude to refresh the snapshot.">Preview: Gmail is not touched</span>');
     $('btn-refresh').hidden = !API.refresh; // only the Apps Script version can read Gmail itself
-    $('btn-review').disabled = false;
+    $('btn-review').disabled = $('btn-refresh').disabled = !!S.reading; // a quiet read takes the server: Apply and a read wait for it
   }
 
   var shown = { before: null, after: null, unsorted: null }; // the first paint sets the numbers, later ones count to them
@@ -162,7 +180,8 @@
     $('rack-sync').className = 'rack-sync' + (a.threads ? ' wait' : '');
     $('rack-sync').innerHTML = a.threads ? TAG + '<span><b>' + fmt(a.threads) + '</b> inbox threads change in Gmail when you apply' +
       (a.add || a.leave ? ': ' + [a.add && fmt(a.add) + ' get labels', a.leave && fmt(a.leave) + ' leave the inbox'].filter(Boolean).join(', ') : '') +
-      (a.off ? (a.add || a.leave ? ', ' : ': ') + fmt(a.off) + ' lose an old label' : '') + '. Until then Gmail shows them as they are' + (a.sorted ? '; ' + fmt(a.sorted) + ' already have their labels.' : '.') + '</span>'
+      (a.off ? (a.add || a.leave ? ', ' : ': ') + fmt(a.off) + ' lose an old label' : '') + '. Until then Gmail shows them as they are' + (a.sorted ? '; ' + fmt(a.sorted) + ' already have their labels.' : '.') +
+      (st.after.later ? ' ' + fmt(st.after.later) + ' more leave within the hour after, as their column says.' : '') + '</span>'
       : TAG + '<span>Your inbox in Gmail matches the board: ' + (a.sorted ? fmt(a.sorted) + ' inbox threads have their labels and nothing waits on Apply.' : 'nothing in your inbox waits on Apply.') + '</span>';
     var n = TRIAGE.counts(), tb = $('btn-triage');
     tb.hidden = !n.open;
@@ -458,7 +477,7 @@
   }
   var saveTimer;
   function save() {
-    clearTimeout(saveTimer);
+    S.edits = (S.edits || 0) + 1; clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
       API.saveConfig(S.config).catch(function (e) { oops(e, 'Your last change was not saved. Nothing in Gmail changed. Your next change saves everything again; if this repeats, reload the page.'); });
     }, 500);
@@ -628,6 +647,14 @@
     document.querySelectorAll('#dr-body [data-goto]').forEach(function (el) { el.onclick = function () { closeDrawer(); showView(el.dataset.goto); }; });
   }
   function showView(v) { ui().view = v; applyView(); save(); }
+  // Priorities' memory in config.ui (I.priorities opts), so Home counts the same: threads you hid, kept while
+  // they are in the inbox with no newer message, and the colleagues switch.
+  function prioOpts() {
+    var u = ui(), hid = u.hidden || {}, keep = {}, n = 0;
+    S.snapshot.threads.forEach(function (t) { if (hid[t.id] && hid[t.id] >= t.date) { keep[t.id] = hid[t.id]; n++; } });
+    if (n !== Object.keys(hid).length) { if (n) u.hidden = keep; else delete u.hidden; save(); }
+    return { hidden: keep, colleaguesOut: !!u.colleaguesOut };
+  }
   function refreshLane() {
     var el = document.querySelector('.lane'); if (!el) return;
     var tmp = document.createElement('div'); tmp.innerHTML = laneHtml();
@@ -1026,6 +1053,7 @@
   }
   // Runs in slices like Apply, then reads again so the board shows what Gmail has. A stopped one resumes from the record.
   function runUndo(kind) {
+    if (reading()) return;
     closeReview();
     API.undo(kind, kind === 'all' ? adoptedIds() : [], showProgress).then(function (res) {
       var done = res && res.summary || 'Undone';
@@ -1167,6 +1195,7 @@
       toast('Filters downloaded');
     };
     if (applyOk) $('rv-apply').onclick = function () {
+      if (reading()) return;
       closeReview();
       // then a read (labels changes come from Gmail's change log: quick), so the board shows what Gmail has now
       API.apply(plan, showProgress).then(function (res) {
@@ -1267,6 +1296,7 @@
   // opts.window: true turns the 30-day read back on after it was stopped or didn't fit. applied: Apply's summary, when the read follows it.
   function refresh(opts, applied) {
     var res;
+    if (!applied && reading()) return Promise.resolve();
     return (API.refresh ? API.refresh(showProgress, opts) : Promise.resolve()).then(function (r) { res = r; return load(); })
       .then(function () {
         hideProgress();
@@ -1292,7 +1322,21 @@
   // the gear: Settings holds the rest (look, import and export, remove everything), where you left it
   $('btn-settings').onclick = function () { SET.open(); };
   $('import-file').onchange = function () { var f = this.files[0]; this.value = ''; if (f) SET.importFile(f); };
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); closeReview(); SET.close(); TRIAGE.close(); } });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeDrawer(); closeReview(); SET.close(); TRIAGE.close(); $('keys').hidden = true; } });
+  // Keys anywhere: / search, 1–5 the tabs, ? the list (#keys). Never while typing, nor over a sheet or the drawer.
+  var TABS = ['home', 'board', 'gmail', 'inbox', 'priorities'];
+  document.addEventListener('keydown', function (e) {
+    var k = e.key, t = e.target, keys = $('keys'), open = document.querySelector('.sheet:not([hidden])') || $('drawer').classList.contains('open');
+    var typing = /^(SELECT|TEXTAREA)$/.test(t.tagName) || t.tagName === 'INPUT' && !/^(checkbox|radio|button|range|color)$/.test(t.type) || t.isContentEditable;
+    if (e.altKey || e.ctrlKey || e.metaKey || typing || !S.snapshot || !S.snapshot.threads.length) return;
+    if (k === '?' && (!open || !keys.hidden)) { e.preventDefault(); keys.hidden = !keys.hidden; if (!keys.hidden) $('ky-close').focus(); return; }
+    if (open) return;
+    var n = k.length === 1 ? '12345'.indexOf(k) : -1;
+    if (n >= 0) { e.preventDefault(); return showView(TABS[n]); }
+    if (k === '/') { e.preventDefault(); if (view() === 'home') showView('board'); $('q').focus(); $('q').select(); }
+  });
+  $('ky-close').onclick = function () { $('keys').hidden = true; };
+  $('keys').addEventListener('click', function (e) { if (e.target === this) this.hidden = true; });
 
   // what settings.js needs from the board
   var SET = window.LabelboardSettings({
@@ -1308,7 +1352,7 @@
     S: S, $: $, h: h, fmt: fmt, plural: plural, bucket: bucket, bandOf: bandOf, textOn: textOn, ui: ui, save: save,
     openCard: openCard, openFilter: openFilter, openOurs: openOurs, refresh: refresh, moveLine: moveLine, undoMove: undoMove,
     moveCard: function (key, to) { moveCard(key, to, null); renderBoard(); }, windowOff: windowOff, canRead: !!API.refresh,
-    trace: trace, showView: showView, colStatus: colStatus, fsText: fsText, labelChip: labelChip, nameChip: nameChip, FUNNEL: FUNNEL,
+    trace: trace, showView: showView, colStatus: colStatus, fsText: fsText, labelChip: labelChip, nameChip: nameChip, FUNNEL: FUNNEL, prioOpts: prioOpts,
     threadUrl: function (id, archived) { return 'https://mail.google.com/mail/u/?authuser=' + encodeURIComponent(S.snapshot.account) + '#' + (archived ? 'all' : 'inbox') + '/' + id; },
   });
   var GMAIL = window.LabelboardGmailView({
@@ -1319,7 +1363,7 @@
   });
   var HOME = window.LabelboardHome({
     S: S, $: $, h: h, fmt: fmt, plural: plural, bucket: bucket, bandOf: bandOf, ui: ui, rackBar: rackBar, colInfo: colInfo, showColumn: showColumn, openReview: openReview, labelState: function () { return labelState(); },
-    triage: function () { return TRIAGE.counts(); }, openTriage: function () { TRIAGE.open('unsorted'); }, since: function () { return S.visit && S.visit.since; },
+    prioOpts: prioOpts, triage: function () { return TRIAGE.counts(); }, openTriage: function () { TRIAGE.open('unsorted'); }, since: function () { return S.visit && S.visit.since; },
   });
   boot();
 })();

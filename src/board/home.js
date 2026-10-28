@@ -11,7 +11,7 @@ window.LabelboardHome = function (ctx) {
   // Everything Home says, counted once per render.
   function data() {
     var st = S.st, a = st.apply, fs = S.fs || {}, tri = ctx.triage(), now = Date.now();
-    var pr = I.priorities(S.snapshot, S.built, S.config, now), pace = Number(ctx.ui().pace) || 2, g = S.gmail.filters;
+    var pr = I.priorities(S.snapshot, S.built, S.config, now, ctx.prioOpts()), pace = Number(ctx.ui().pace) || 2, g = S.gmail.filters;
     var cols = S.config.buckets.map(function (b) { var c = ctx.colInfo(b); c.b = b; c.after = st.after.byBucket[b.id] || 0; c.leaves = st.after.archivedByBucket[b.id] || 0; return c; }).filter(function (c) { return c.cards; });
     var d = { st: st, a: a, fs: fs, tri: tri, pr: pr, pace: pace, cols: cols, pending: (fs.pending || 0) + a.threads, applied: !!(S.record && S.record.applies && S.record.applies.length),
       filters: g ? { all: g.length, ours: g.filter(function (f) { return f.owned; }).length, make: fs.status ? fs.status.actions.create.length : 0 } : null,

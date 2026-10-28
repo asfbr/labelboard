@@ -545,6 +545,27 @@ test('when mail leaves the inbox: the column answers once, a card follows it or 
   assert.equal(R.cardLeaves({ act: { archive: false } }), 'never'); // a card set before the menu existed reads as it did
 });
 
+test('leaving later counts as leaving once the hourly run would take it, and Apply still leaves it alone', () => {
+  const old = '2001-01-01T00:00:00Z', fresh = new Date().toISOString();
+  const snap = { threads: [T({ id: 'o', from: 'ceo@acme.com' }), T({ id: 'n', from: 'cfo@acme.com' }), T({ id: 'u', from: 'ana@acme.com', labels: ['INBOX', 'UNREAD'] })] };
+  snap.threads.forEach((t, i) => { t.date = [old, fresh, old][i]; }); // its newest message
+  const b = R.buildCards(snap, config, acmeSeed), cols = JSON.parse(JSON.stringify(config.buckets)), port = cols.find((x) => x.id === 'portfolio');
+  const at = (cfg) => { const st = R.stats(snap, b, cfg); return [st.after.inbox, st.after.later, st.after.archivedByBucket.portfolio || 0, st.apply.leave]; };
+  R.setLeaves(port, 'd3');
+  const cfg = { ...config, buckets: cols, cards: {} };
+  assert.deepEqual(at(cfg), [1, 2, 2, 0]); // the two old threads go on the hourly run, the fresh one stays; Apply archives none
+  assert.deepEqual(R.buildPlan(snap, b, cfg, acmeSeed).backfill, R.buildPlan(snap, b, { ...config, cards: {} }, acmeSeed).backfill); // what Apply sends is unchanged
+  R.setLeaves(port, 'read');
+  assert.deepEqual(at(cfg), [1, 2, 2, 0]); // once read: the read ones go whatever their age, the unread one stays
+  assert.deepEqual(snap.threads.map((t) => R.threadPlace(t, b, cfg).later), [true, true, false]);
+  const own = { bucket: 'portfolio', when: { subject: ['invoice'] } };
+  assert.deepEqual(at({ ...cfg, cards: { 'entity:portfolio:Acme': own } }), [3, 0, 0, 0]); // its condition holds the run back, as laterRules' search would
+  R.setLeaves(port, 'now');
+  assert.deepEqual(at(cfg).slice(1), [0, 3, 3]); // right away is Apply's, not the hourly run's
+  const p = R.threadPlace(snap.threads[0], b, { ...config, buckets: cols.map((x) => (x.id === 'portfolio' ? { ...x, archive: false, later: { days: 3 } } : x)), cards: {} });
+  assert.deepEqual([p.leaves, p.later, p.out], [false, true, true]);
+});
+
 // ---------- the colleague cards: only colleagues on it, or colleagues with people outside ----------
 const team = { id: 'team', name: 'Team only', label: 'Team only', archive: false, color: { backgroundColor: '#999999', textColor: '#ffffff' } };
 const firmSnap = () => ({ threads: [

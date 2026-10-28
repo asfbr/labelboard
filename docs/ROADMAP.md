@@ -27,9 +27,9 @@ inside an item is marked ✔ or ❓ with a date, never left in prose. When an it
 | 1 | First sort | ✅ Done 17 Oct | fit the board, triage mode, card words, accept suggestions, one scope for numbers |
 | 2 | Speed | ✅ Done 17 Oct | `buildPlan` and `buildCards` under 300 ms |
 | 3 | Trust | ✅ Done 17 Oct | undo, apply record, remove everything (filter status on the board ✅ 17 Oct) |
-| 4 | Daily use | 🟢 | re-read on open, Priorities that remembers, keyboard, leaves-later in the numbers; what changed ✅ 19 Oct (on Home) |
+| 4 | Daily use | ✅ Done 28 Oct | re-read on open, Priorities that remembers, keyboard, leaves-later in the numbers; what changed ✅ 19 Oct (on Home) |
 | 5 | Before and after | ✅ Done 28 Oct | the before → after strip and Flow you drag in ✅ 19 Oct; the Gmail tab ✅ 28 Oct |
-| 6 | A stranger's first hour | 🔵 | estimate then resume, the storage wall, see a finished board first, smaller paste path, guide fixes |
+| 6 | A stranger's first hour | 🟢 | estimate then resume, the storage wall, see a finished board first, smaller paste path, guide fixes |
 | 7 | Landing page | 🔵 | the hosted demo, the first-run link to it, two more presets |
 | 8 | Sorting by hand | 🔵 | column menu, multi-select, why this thread is here, merge and split on the board |
 
@@ -42,15 +42,11 @@ Later; the landing page is session 7 (28 Oct).
 
 | Item | Area | Status | Size | Session | Decision / flags |
 |---|---|---|---|---|---|
-| Re-read on open when stale | Daily use | 🟢 Now | S | 4 | |
-| Priorities that remembers | Daily use | 🟢 Now | S | 4 | |
-| Keyboard | Daily use | 🟢 Now | S | 4 | |
-| Leaves-later in the numbers | Daily use | 🟢 Now | S | 4 | |
-| Estimate, then resume | First read | 🔵 Next | M | 6 | |
-| Big inboxes: the storage wall | First read | 🔵 Next | M | 6 | ✔ cap at newest 2,500, no Drive |
-| See a finished board first | First read | 🔵 Next | S | 6, 7 | the permissions in 6, the demo link in 7 |
-| Smaller paste path | Install | 🔵 Next | S | 6 | |
-| Guide fixes | Install | 🔵 Next | S | 6 | needs the fresh-account install walk |
+| Estimate, then resume | First read | 🟢 Now | M | 6 | |
+| Big inboxes: the storage wall | First read | 🟢 Now | M | 6 | ✔ cap at newest 2,500, no Drive |
+| See a finished board first | First read | 🟢 Now | S | 6, 7 | the permissions in 6, the demo link in 7 |
+| Smaller paste path | Install | 🟢 Now | S | 6 | |
+| Guide fixes | Install | 🟢 Now | S | 6 | needs the fresh-account install walk |
 | Landing page with the demo | Integrations | 🔵 Next | M | 7 | ✔ Later → Next (28 Oct) |
 | More presets | Integrations | 🔵 Next | S each | 7 | ✔ two first, `freelancer` and `household` (28 Oct) |
 | Merge and split on the board | First sort | 🔵 Next | M | 8 | ✔ no drop-on-card merge |
@@ -64,9 +60,14 @@ Later; the landing page is session 7 (28 Oct).
 | Adopt all, hand back all | Review and Apply | 🔵 Next | S | — | ✔ on the Gmail tab (28 Oct) |
 | Contacts editor and CSV import | Integrations | 🔵 Next | M | — | after 8 |
 | Browser extension or Claude in Chrome | Integrations | ⚪ Later | L | — | ✔ only if the brief and the skill fall short (19 Oct) · Data out |
+| Claude on the board, through a Gmail draft | Integrations | ⚪ Later | M | — | ✔ 1a 2a (28 Oct) · blocked: connector can't write drafts · Data out |
 | The Gmail tab (Flow, Filters, Labels as one) | Before and after | ✅ Done 28 Oct | L | 5 | ✔ 28 Oct: filters → bands → labels (2a) |
 | Inbox tab (Overview, All threads as one) | Before and after | ✅ Done 28 Oct | S | — | ✔ 28 Oct: five tabs (1b) |
 | Merge any label of yours into any label | Before and after | ✅ Done 28 Oct | M | — | ✔ 28 Oct: menu with lookalikes, and drag (3a + 3b) |
+| Re-read on open when stale | Daily use | ✅ Done 28 Oct | S | 4 | |
+| Priorities that remembers | Daily use | ✅ Done 28 Oct | S | 4 | |
+| Keyboard | Daily use | ✅ Done 28 Oct | S | 4 | |
+| Leaves-later in the numbers | Daily use | ✅ Done 28 Oct | S | 4 | |
 | Leaves the inbox per column | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: one menu, cards follow |
 | Runs on its own: read, then apply | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: both opt-in (4c) |
 | Only colleagues on it (hourly, no filter) | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: two colleague cards, labelled hourly |
@@ -183,8 +184,17 @@ Later; the landing page is session 7 (28 Oct).
   (search can't say "nobody else"), the hourly run labels their mail and unlabels a thread someone outside
   joins. Other cards, filters and backfill unchanged on the real snapshot. `rules.js whoIsOn`/`peopleRules`/
   `peopleChanges`, `Code.js runPeople_`; tested. Why and how: `ARCHITECTURE.md` → The colleague cards.
+- ✅ 28 Oct, session 4 "Daily use" (picked from the mocked overview, `decisions/2026-10-28-roadmap.html`): a read
+  over an hour old catches up on its own when the board opens or the tab comes back ("Reading what changed…"
+  in the header, Apply and reads wait for it, edits made meanwhile kept); Priorities hides a thread until a
+  newer message and can leave out threads with only colleagues on them, Home counting the same (`config.ui`);
+  `/`, `1`–`5` and `?` (a keys sheet); a column that leaves after N days or once read counts what the first
+  hourly run would take as leaving, in the rack, Home, Flow, Inbox and Priorities ("N more leave within the
+  hour after"). Cards, filter queries, backfill and later rules unchanged on the real snapshot.
+  `rules.js threadPlace` (`later`, `out`), `insights.js priorities` (`hidden`, `colleaguesOut`), `app.js
+  quietRead`; tested. Checked live on a demo copy.
 
-Latest build v0.0.28 (`package.json`).
+Latest build v0.0.29 (`package.json`).
 
 ## Item briefs
 
@@ -196,9 +206,9 @@ it lives.
 Today: Node, clasp, the Apps Script API switch, two consent screens and the "unverified app" warning,
 or a six-file paste. The heaviest step for a product aimed at anyone with Gmail.
 
-- **Guide fixes** · 🔵 Next · S · session 6. A screenshot of the "unverified app" screen with the two clicks
+- **Guide fixes** · 🟢 Now · S · session 6. A screenshot of the "unverified app" screen with the two clicks
   marked, taken on the fresh-account install walk (the `/exec` bookmark note ✅ 19 Oct).
-- **Smaller paste path** · 🔵 Next · S · session 6. A build target that folds `Sync.js`, `Presets.js` and
+- **Smaller paste path** · 🟢 Now · S · session 6. A build target that folds `Sync.js`, `Presets.js` and
   `Baked.js` into `Code.js`, so the no-terminal path is two files plus the manifest.
   `dev/build.mjs --single`. The release zip of `dist/` ✅ 19 Oct: `.github/workflows/release.yml`
   on a `v*` tag, notes taken from `CHANGELOG.md`.
@@ -217,12 +227,12 @@ or a six-file paste. The heaviest step for a product aimed at anyone with Gmail.
 Today: pick a preset, click *Read my mail*, wait with no estimate (the "7 minutes per 1,000 threads"
 line lives only in `INSTALL.md`), and lose the run if the tab closes.
 
-- **Estimate, then resume** · 🔵 Next · M · session 6. *Read my mail* first lists (seconds), then says "About 9
+- **Estimate, then resume** · 🟢 Now · M · session 6. *Read my mail* first lists (seconds), then says "About 9
   minutes for 1,204 threads. Leave this tab open." The slice cursor lives only in the page today, so a
   closed tab starts over even though the `scan` blob survives 6 h. Keep the cursor in that blob and, on
   reopen, offer "Continue reading: 600 of 1,204 done". `Code.js scanInbox`, `adapter-gas.js refresh`,
   the first-run screen in `settings.js`.
-- **Big inboxes: the storage wall** · 🔵 Next · M · session 6 · ✔ cap, no Drive (17 Oct). Measured on the real
+- **Big inboxes: the storage wall** · 🟢 Now · M · session 6 · ✔ cap, no Drive (17 Oct). Measured on the real
   snapshot: 160 bytes per thread compressed, so the 500 KB of user properties fits about 2,900 inbox
   threads on its own; settings, contacts, owned filters and the window share that space, so the real
   ceiling is lower. The stopgap is done (see Done); those users still can't use the board. Done when
@@ -231,7 +241,7 @@ line lives only in `INSTALL.md`), and lose the run if the tab closes.
   still catch new mail like it." The cap comes from a pure `LabelboardSync` function (bytes per thread
   with margin, tested), the read never throws on storage, and the header shows "newest 2,500 of 8,400".
   Slimming records (snippet 160 → 100 chars) buys about 15%: only if it falls out of this.
-- **See a finished board first** · 🔵 Next · S · sessions 6 and 7. Session 6: show the three permissions
+- **See a finished board first** · 🟢 Now · S · sessions 6 and 7. Session 6: show the three permissions
   it asked for, in the same words as `INSTALL.md`, so the consent screen isn't the last time they are
   explained. Session 7: the first-run screen links to the hosted demo, so the user knows what the wait buys.
 - **Board while it reads** · ⚪ Later · L. Render kept plus fetched-so-far threads during the read. The
@@ -272,27 +282,11 @@ can be undone, and the ⋯ menu removes everything Labelboard made (Done, 17 Oct
 - **Adopt all, hand back all** · 🔵 Next · S · ✔ on the Gmail tab (28 Oct). Two buttons at the top of
   the Gmail tab's filters column, for people with 60 filters.
 
-### Before and after
-
-Board, the pane under it and the Gmail tab answer where mail ends up and why (Done, 28 Oct).
-
-- **Leaves-later in the numbers** · 🟢 Now · S · session 4. A column that leaves the inbox after N days counts as
-  staying in the rack and Home ("stay after you apply"), which is true on the day you apply but not a week
-  later. Count threads older than N days as leaving, hatched like right away; `rules.js threadPlace`.
-
 ### Daily use
 
-Today the board is a one-time sorter with manual re-reads; Priorities is the page people would come
-back to, and it has no memory between visits.
+Today the board catches up on its own when opened, Priorities remembers what you hid, and *Runs on its own*
+reads and applies (Done, 28 Oct).
 
-- **Re-read on open when stale** · 🟢 Now · S. Opening the board with a read older than an hour starts
-  the incremental read (seconds) while the old snapshot shows, with a slim "Reading what changed…" line
-  in the header. For everyone who leaves *Runs on its own* off (it reads every 6 hours when on).
-- **Priorities that remembers** · 🟢 Now · S. "Hide" on a waiting thread (a local list, cleared when
-  the thread gets a new message) and a switch, off by default, to leave colleagues out ("Printer is
-  fixed" is not a priority). Pace and view already persist in `config.ui`.
-- **Keyboard** · 🟢 Now · S · session 4. `/` focuses search, `1`–`5` switch views, `?` lists the
-  shortcuts, Esc already closes everything.
 - **Mail you never read** · 🔵 Next · S · ✔ 28 Oct. One list of the cards whose mail you leave unread
   (the test `rules.js actionHint` already runs per card: mostly machine senders, most of it unread), as
   a door on Home, with one button that sets *archive 3 days after it arrives* on each of those cards.
@@ -316,6 +310,24 @@ back to, and it has no memory between visits.
   access to mail.google.com, a bigger trust ask than the app itself. Claude in Chrome can't drive the
   deployed board (a cross-origin iframe) and would read Gmail screen by screen. Only if the AI brief
   and the Claude skill (Done, 19 Oct) fall short.
+- **Claude on the board, through a Gmail draft** · ⚪ Later · M · ✔ 1a 2a (28 Oct) · blocked on the
+  connector. Goal: Claude reads the board and places cards without the copy and paste. Nothing outside
+  Google can call the board without a Google Cloud project (Apps Script's execution API needs one, plus an
+  OAuth client and an "API executable" deployment), and Labelboard never needs one (`ARCHITECTURE.md` → Why
+  Apps Script), so no MCP. Picked from mocked options: the board keeps one draft, *Labelboard for Claude*,
+  no recipient. It writes the brief (`rules.js reviewBrief`/`briefText`) above a marker line, Claude
+  writes its answer JSON below it with the Gmail connector, and the board merges it on the next read
+  (`mergeReview`, `by: 'claude'`) and rewrites the brief. Claude only places cards; you apply (2b,
+  Claude applies too, was turned down). Rejected: a Drive file (adds `drive.file` to every install and a
+  second connector).
+  Checked 28 Oct: `drafts.create` accepts `gmail.modify`, which Labelboard has, so no new scope. Blocker:
+  Claude's Gmail connector on a read-only grant can't write drafts ("Insufficient scope" on `create_draft`;
+  it needs compose, drafts or modify). First step: reconnect the connector with write access and rerun
+  create → update → read → delete; if the grant can't be had, ship only the read half (Claude reads the
+  brief from the draft, the answer is still pasted). When building: keep drafts out of the window read and
+  the hourly colleague search (`-in:drafts`, or the draft would be a colleague thread), read the answer from
+  `text/plain` or stripped HTML (the connector may write either), a `claude-draft` file for `dev/serve.mjs`,
+  the README promise ("reads one body: its own draft"), and the skill's step 1.
 - **gmailctl export** · ⚪ Later. Writing the board as gmailctl's config would reach its users; low
   cost, low demand. Only if asked.
 - **Languages** · ⚪ Later. Strings are inline. A strings table has to come first.
@@ -367,12 +379,19 @@ On the real account, before touching that area.
   a fold (messages moved, old label deleted, a filter of yours rewritten to the new label), a leftover
   cleared, colours patched, then *Undo this Apply* (labels made again with their colour, mail back).
   Also whether Gmail refuses a name that differs only in case.
+- [ ] Opening the deployed board with a read over an hour old (preview only so far, with a stand-in read):
+  "Reading what changed…" in the header, Review and *Read mail again* wait, then "Caught up"; and while *Runs
+  on its own* is reading at that moment, the board keeps the last read and says why.
+- [ ] Priorities on the real account: a hidden thread stays hidden after a reload and on the other machine,
+  comes back with a new message; the colleagues count looks right for your mailbox.
 
 ## Known gaps kept as they are
 
 - Moving a card re-sorts inbox threads only; archived mail keeps its labels (a Gmail search per card
   would be needed). A whole label's mail moves only when the label is left over or folded (Labels).
 - Archived mail older than the window (30 days) isn't on the board.
+- A thread that reaches a leaves-later column only through a secondary card's filter isn't counted as leaving,
+  though that column's hourly search would take it.
 - Your own Gmail filters don't change the before/after numbers (they act on new mail); they count in
   their lane.
 - In the local preview, a column remap can't rewrite contacts files in the seed folder.

@@ -582,12 +582,13 @@ var LabelboardRules = (function () {
   function stats(snapshot, built, config, gmail) {
     var ctx = placeCtx(built, config), owned = resortable(gmail);
     var inbox = snapshot.threads.filter(function (t) { return t.labels.indexOf('INBOX') >= 0; });
-    var after = { inbox: 0, byBucket: {}, archivedByBucket: {}, unsortedInInbox: 0 }, apply = { byThread: {}, threads: 0, add: 0, leave: 0, off: 0, sorted: 0 };
+    var after = { inbox: 0, byBucket: {}, archivedByBucket: {}, unsortedInInbox: 0, later: 0 }, apply = { byThread: {}, threads: 0, add: 0, leave: 0, off: 0, sorted: 0 };
     inbox.forEach(function (t) {
       var pl = threadPlace(t, built, config, ctx), pb = pl.bucket, ch = threadChange(t, pl, owned);
       after.byBucket[pb] = (after.byBucket[pb] || 0) + 1;
-      if (pl.leaves) after.archivedByBucket[pb] = (after.archivedByBucket[pb] || 0) + 1;
+      if (pl.out) after.archivedByBucket[pb] = (after.archivedByBucket[pb] || 0) + 1;
       else after.inbox++;
+      if (pl.later) after.later++;
       if (!pl.labelled && pb === 'unsorted') after.unsortedInInbox++;
       if (ch) { apply.byThread[t.id] = ch; apply.threads++; if (ch.add.length) apply.add++; if (ch.leaves) apply.leave++; if (ch.off.length) apply.off++; if (ch.read) apply.read = (apply.read || 0) + 1; }
       else if (pl.labelled) apply.sorted++;
@@ -605,16 +606,24 @@ var LabelboardRules = (function () {
     pf = pf || planFilters(built, config);
     var cardByKey = {}, groups = pf.groups, gl = Object.keys(groups).map(function (k) { return groups[k]; });
     built.cards.forEach(function (c) { cardByKey[c.key] = c; });
-    return { buckets: bucketById(config), cardByKey: cardByKey, groups: gl, matches: groupMatcher(gl), people: pf.people, does: Object.create(null) };
+    return { buckets: bucketById(config), cardByKey: cardByKey, groups: gl, matches: groupMatcher(gl), people: pf.people, does: Object.create(null), late: Object.create(null), now: Date.now() };
   }
-  // Where one inbox thread ends up after sorting: its column (primary card's, or its own move), the labels
-  // it gets, whether it leaves the inbox. Stats and the plan's backfill both read this, so what the board
-  // counts is what Apply does. ctx (optional) is placeCtx(), so a loop builds it once. of: label → its column.
-  // Mail already here gets skip inbox and mark as read (delete skips the inbox); star, important and delete are
-  // for new mail only. acts: label → 'a' / 'r' / 'ar', the label whose filter does it.
+  // A card's archiving later as laterRules hands it to the hourly run: none without filter terms or in Unsorted; its condition always applies.
+  function lateRule(c, p, b, d, config) {
+    var on = d.later && b.id !== 'unsorted' && ruleTerms(c, p, b).length;
+    return { l: on ? d.later : null, w: on ? whenOf(((config.cards || {})[c.key] || {}).when) : null };
+  }
+  // Whether the hourly run would archive this inbox thread now (Sync.js laterQueries): its newest message older than
+  // N days, or nothing in it unread.
+  function laterDue(l, t, now) { return l.days ? now - Date.parse(t.date) >= l.days * 864e5 : !!l.read && t.labels.indexOf('UNREAD') < 0; }
+  // Where one inbox thread ends up: its column (primary card's, or its own move), its labels, whether Apply takes
+  // it out of the inbox (leaves; the backfill reads this too, so the board counts what Apply does) or the first
+  // hourly run does (later); out = either, what the after-Apply numbers count. ctx (optional): placeCtx(). of:
+  // label → its column. acts: label → 'a' / 'r' / 'ar'. Mail already here gets skip inbox and mark as read (delete
+  // skips the inbox); star, important and delete are for new mail only.
   function threadPlace(t, built, config, ctx) {
     ctx = ctx || placeCtx(built, config);
-    var buckets = ctx.buckets, keys = built.threadCards[t.id] || [], archived = false, read = false, primaryBucket = null, labels = [], of = {}, acts = {};
+    var buckets = ctx.buckets, keys = built.threadCards[t.id] || [], archived = false, read = false, primaryBucket = null, labels = [], of = {}, acts = {}, later = false;
     var give = function (b, name, a) {
       if (labels.indexOf(name) < 0) { labels.push(name); of[name] = b; }
       if (!a) return;
@@ -623,7 +632,7 @@ var LabelboardRules = (function () {
       if (a.read && cur.indexOf('r') < 0) { cur += 'r'; read = true; }
       if (cur) acts[name] = cur;
     };
-    var done = function (moved) { return { card: keys[0] || null, bucket: primaryBucket || 'unsorted', labelled: labels.length > 0, labels: labels, of: of, leaves: archived, reads: read, acts: acts, moved: moved }; };
+    var done = function (moved) { later = later && !archived; return { card: keys[0] || null, bucket: primaryBucket || 'unsorted', labelled: labels.length > 0, labels: labels, of: of, leaves: archived, later: later, out: archived || later, reads: read, acts: acts, moved: moved }; };
     var o = threadMove(t.id, built, config, ctx.cardByKey, buckets);
     if (o) { // a per-thread decision replaces the rules for mail already in the inbox
       var ob = buckets[o.bucket];
@@ -638,6 +647,8 @@ var LabelboardRules = (function () {
       var d = ctx.does[c.key] = ctx.does[c.key] || cardDoes(c, config, b);
       give(b, b.label, d.extra && whenMatches(d.when, t) ? d.extra : d.base);
       if (p.sublabel) give(b, labelName(b, p.sublabel));
+      var lr = ctx.late[c.key] = ctx.late[c.key] || lateRule(c, p, b, d, config);
+      later = !!lr.l && laterDue(lr.l, t, ctx.now) && whenMatches(lr.w, t);
     }
     // then every Gmail filter that matches it, as Gmail runs them all: a secondary card only through its filter
     ctx.matches(t).forEach(function (hit, i) { var g = ctx.groups[i]; if (hit) give(buckets[g.bucket], g.label, g); });

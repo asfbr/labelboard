@@ -34,7 +34,7 @@ var LabelboardInsights = (function (R) {
     var rows = inbox.map(function (t) {
       var p = R.threadPlace(t, built, config, ctx), ch = R.threadChange(t, p, opts.owned) ? 1 : 0, k = p.card || '_none';
       var c = cards[k] = cards[k] || { n: 0, ch: 0 }; c.n++; c.ch += ch;
-      return { now: nowOf(t, p, ch), card: k, after: p.bucket, leaves: !!p.leaves, ch: ch };
+      return { now: nowOf(t, p, ch), card: k, after: p.bucket, leaves: !!p.out, ch: ch };
     });
     var keep = {};
     Object.keys(cards).sort(function (a, z) { return (cards[z].ch > 0) - (cards[a].ch > 0) || cards[z].n - cards[a].n || a.localeCompare(z); })
@@ -142,7 +142,7 @@ var LabelboardInsights = (function (R) {
     var cols = {}, months = {}, people = 0, machine = 0, answered = 0, starred = 0;
     ps.forEach(function (p) {
       var t = p.t, col = cols[p.bucket] = cols[p.bucket] || { id: p.bucket, n: 0, leaves: 0, cards: {} };
-      col.n++; if (p.leaves) col.leaves++;
+      col.n++; if (p.out) col.leaves++;
       var k = p.card || '_none'; col.cards[k] = (col.cards[k] || 0) + 1;
       if (isPerson(p, byB, config)) { people++; if (waitsSince(t) == null) answered++; } // "answered": the one definition, as in priorities()
       else if (!isAlias(t.from, config)) machine++; // a group address is neither: colleagues forwarding
@@ -224,9 +224,12 @@ var LabelboardInsights = (function (R) {
 
   // ---------- Priorities: what in the inbox waits on you ----------
   // "Waiting on you" is waitsSince(): the last word is theirs. Score: starred, then Gmail's Important,
-  // a topic column, then how long it has waited.
-  function priorities(snapshot, built, config, now) {
-    var byB = bucketsById(config), ps = places(snapshot, built, config), cardByKey = {};
+  // a topic column, then how long it has waited. opts (optional): hidden ({ thread id: its date when you hid it }; a
+  // newer message brings it back), colleaguesOut (leave out threads with only colleagues on them, R.whoIsOn). Both
+  // only shorten the waiting list; hidden and colleagues count what they took or would take out.
+  function priorities(snapshot, built, config, now, opts) {
+    opts = opts || {};
+    var byB = bucketsById(config), ps = places(snapshot, built, config), cardByKey = {}, hid = opts.hidden || {}, hidden = 0, colleagues = 0;
     built.cards.forEach(function (c) { cardByKey[c.key] = c; });
     var waiting = [], ages = { week: 0, month: 0, quarter: 0, older: 0 }, people = 0, answered = 0, recent = { week: 0, month: 0 }, noise = {}, machineStays = 0;
     ps.forEach(function (p) {
@@ -234,13 +237,16 @@ var LabelboardInsights = (function (R) {
       if (days <= 7) recent.week++;
       if (days <= 30) recent.month++;
       if (!isPerson(p, byB, config)) {
-        if (!p.leaves && !isAlias(t.from, config)) { machineStays++; var k = p.card || '_none'; noise[k] = noise[k] || { key: cardByKey[k] ? k : null, title: cardByKey[k] ? cardByKey[k].title : 'No card', bucket: p.bucket, n: 0 }; noise[k].n++; }
+        if (!p.out && !isAlias(t.from, config)) { machineStays++; var k = p.card || '_none'; noise[k] = noise[k] || { key: cardByKey[k] ? k : null, title: cardByKey[k] ? cardByKey[k].title : 'No card', bucket: p.bucket, n: 0 }; noise[k].n++; }
         return;
       }
       people++;
       var w = waitsSince(t);
       if (w == null) { answered++; return; }
-      if (p.leaves) return;
+      if (p.out) return;
+      if (hid[t.id] && hid[t.id] >= t.date) { hidden++; return; }
+      var only = R.whoIsOn(t, config) === 'only'; if (only) colleagues++;
+      if (only && opts.colleaguesOut) return;
       days = Math.max(0, (now - w) / DAY);
       ages[days <= 7 ? 'week' : days <= 30 ? 'month' : days <= 90 ? 'quarter' : 'older']++;
       var score = (t.labels.indexOf('STARRED') >= 0 ? 8 : 0) + (t.labels.indexOf('IMPORTANT') >= 0 ? 2 : 0) + (b && b.topics ? 3 : 0) + Math.max(0, 4 - Math.log2(1 + days));
@@ -248,7 +254,7 @@ var LabelboardInsights = (function (R) {
     });
     waiting.sort(function (a, z) { return z.score - a.score || z.t.date.localeCompare(a.t.date); });
     return {
-      inbox: ps.length, people: people, answered: answered, recent: recent, ages: ages, waiting: waiting, machineStays: machineStays,
+      inbox: ps.length, people: people, answered: answered, recent: recent, ages: ages, waiting: waiting, machineStays: machineStays, hidden: hidden, colleagues: colleagues,
       noise: Object.keys(noise).map(function (k) { return noise[k]; }).filter(function (x) { return x.n >= 3; }).sort(function (a, z) { return z.n - a.n; }).slice(0, 8),
     };
   }
