@@ -520,6 +520,45 @@ test('archiving later: one rule per card with its own searches, none without', (
   assert.equal(R.laterOf({ days: 0 }), null);
 });
 
+test('when mail leaves the inbox: the column answers once, a card follows it or gives its own', () => {
+  const snap = acmeSnap(), b = R.buildCards(snap, config, acmeSeed);
+  const cols = JSON.parse(JSON.stringify(config.buckets)), port = cols.find((x) => x.id === 'portfolio');
+  R.setLeaves(port, 'd3');
+  assert.deepEqual([port.archive, port.later, R.leavesOf(port)], [false, { days: 3 }, 'd3']);
+  const cfg = { ...config, buckets: cols, cards: {} };
+  const rules = R.laterRules(b, cfg);
+  assert.deepEqual(rules.map((r) => [r.id, r.days]), [['col:portfolio', 3]]); // one search for the column, not one per card
+  assert.match(rules[0].queries[0], /acme\.com/);
+  // the column's filters don't change: archiving later is Labelboard's hourly check, not a Gmail filter
+  assert.deepEqual(R.planFilters(b, cfg).filters, R.planFilters(b, config).filters);
+  const own = { bucket: 'portfolio' };
+  R.setCardLeaves(own, 'never');
+  assert.deepEqual([own.act, own.later, R.cardLeaves(own)], [{ archive: false }, { off: true }, 'never']);
+  const never = R.laterRules(b, { ...cfg, cards: { 'entity:portfolio:Acme': own } });
+  assert.ok(never.every((r) => r.id.startsWith('col:') && !/acme\.com/.test(r.queries.join(' ')))); // the rest of the column still goes
+  R.setCardLeaves(own, 'read');
+  assert.deepEqual(R.laterRules(b, { ...cfg, cards: { 'entity:portfolio:Acme': own } }).filter((r) => !r.id.startsWith('col:')).map((r) => [r.id, r.read]), [['entity:portfolio:Acme', true]]);
+  R.setCardLeaves(own, '');
+  assert.deepEqual([own.act, own.later, R.cardLeaves(own)], [undefined, undefined, '']);
+  R.setLeaves(port, 'now'); // right away is Gmail's: the timing goes
+  assert.deepEqual([port.archive, port.later, R.laterRules(b, cfg)], [true, undefined, []]);
+  assert.equal(R.cardLeaves({ act: { archive: false } }), 'never'); // a card set before the menu existed reads as it did
+});
+
+test('applying on its own: the plan Review would send, nothing only you start, and a settings key that ignores view picks', () => {
+  const snap = acmeSnap(), seeds = acmeSeed.concat(zetaSeed), b = R.buildCards(snap, config, seeds);
+  const full = R.buildPlan(snap, b, config, seeds), auto = R.autoPlan(snap, null, config, seeds, { ownedLabels: ['_Portfolio/Old'] });
+  assert.deepEqual(auto.filters, full.filters);
+  assert.deepEqual([auto.unlabel, auto.moves, auto.handover, auto.adopt, auto.auto], [[], [], [], [], true]);
+  assert.ok(auto.backfill.every((e) => e.threadIds.length), 'only what Gmail doesn\'t have yet');
+  assert.equal(R.settingsKey({ ...config, ui: { view: 'gmail' }, release: ['f1'] }), R.settingsKey(config));
+  assert.notEqual(R.settingsKey({ ...config, cards: { x: { bucket: 'keep' } } }), R.settingsKey(config));
+  // a thread that has its label and stays in the inbox is left alone; one that leaves keeps it in `had`
+  const byId = { a: { labels: ['INBOX', 'L'] }, b: { labels: ['INBOX'] } };
+  assert.deepEqual(R.trimBackfill([{ label: 'L', threadIds: ['a', 'b'] }], byId).map((e) => e.threadIds), [['b']]);
+  assert.deepEqual(R.trimBackfill([{ label: 'L', archive: true, threadIds: ['a', 'b'] }], byId)[0].had, ['a']);
+});
+
 test('an idea for a card: mostly through a group address and never answered → skip the inbox when it comes that way', () => {
   const ts = [1, 2, 3].map((i) => T({ id: 'h' + i, from: 'ceo@acme.com', to: ['deals@firm.com'] }));
   const snap = { threads: ts }, b = R.buildCards(snap, config, acmeSeed), byId = Object.fromEntries(ts.map((t) => [t.id, t]));

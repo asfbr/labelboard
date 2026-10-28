@@ -15,7 +15,7 @@ export function boardHtml(target) {
     .replace('/*@RULES@*/', () => read('src/rules.js'))
     .replace('/*@INSIGHTS@*/', () => read('src/insights.js'))
     .replace('/*@LABELS@*/', () => read('src/labels.js'))
-    .replace('/*@LABELSVIEW@*/', () => read('src/board/labels-view.js'))
+    .replace('/*@GMAILVIEW@*/', () => read('src/board/gmail-view.js'))
     .replace('/*@VIEWS@*/', () => read('src/board/views.js'))
     .replace('/*@TRIAGE@*/', () => read('src/board/triage.js'))
     .replace('/*@HOME@*/', () => read('src/board/home.js'))
@@ -36,6 +36,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   fs.writeFileSync(path.join(dist, 'board.html'), boardHtml('gas'));
   for (const f of fs.readdirSync(path.join(root, 'src/server'))) fs.copyFileSync(path.join(root, 'src/server', f), path.join(dist, f));
   fs.writeFileSync(path.join(dist, 'Presets.js'), `var PRESETS = ${JSON.stringify(presets())};\n`);
+  fs.copyFileSync(path.join(root, 'src/rules.js'), path.join(dist, 'Rules.js')); // applying on its own builds the plan on the server
   // --bake <config.json>: ship settings with the code; the script takes them once (see Code.js takeBaked_)
   const i = process.argv.indexOf('--bake'), bake = i > 0 ? fs.readFileSync(process.argv[i + 1], 'utf8') : null;
   const stamp = bake ? createHash('sha1').update(bake).digest('hex').slice(0, 12) : '';

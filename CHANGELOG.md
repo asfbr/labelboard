@@ -3,6 +3,24 @@
 One section per version, newest first; changes not released yet go under `## Unreleased` at the top. Each version is one Apps Script deploy, and the release zip of
 the same tag holds its `dist/`. v0.0.1 to v0.0.8 went out labelled v0.1 to v0.8.0 and were renumbered.
 
+## v0.0.28 · 28 Oct 2026
+- Five tabs instead of eight. **Gmail** takes over Flow, Filters and Labels: filters on the left (each
+  column's, yours, none), labels on the right in Gmail's colours, your threads as bands between them,
+  solid where the label is on the mail, faint where Apply puts it, hatched where it leaves the inbox.
+  The day-by-day strips sit under it. **Inbox** takes over Overview and All threads (who writes, every
+  thread, by age). A saved tab from before opens its new home.
+- *Leaves the inbox*: one menu per column instead of the *Skip inbox* switch. Stays, right away (Gmail's
+  own skip-inbox filter), after a day, three, a week, two, a month, or once read. A card follows its
+  column unless you set it, in its drawer or under its column on the Gmail tab. The timed ones are one
+  hourly search per column, not one per card.
+- Merge any label of yours into any label: one the board made (a company's sub-label too), a folder, or
+  another of yours. Pick it from the label's menu, or drag the label onto another (it asks first). Labels
+  of yours that look the same as one the board made are found for you, with *Merge it* or *Merge all*.
+- Runs on its own (Settings), both off until you switch them on: read what changed every 6 hours, and
+  then apply what the rules placed (new senders' filters, labels on new inbox mail) when nothing of yours
+  waits for Review. It never moves or takes off a label; each run is an Apply you can undo. The header
+  says when it read or applied on its own. No new permission: it rides the hourly trigger.
+
 ## v0.0.27 · 26 Oct 2026
 - A *Labels* tab: every label in your Gmail, in the colour Gmail shows it, under the board's columns or
   as yours. Fold a label of yours into a column (its mail moves, inbox and archived, onto the same

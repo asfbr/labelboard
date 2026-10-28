@@ -93,7 +93,7 @@ function saveOwned_(filters, gone) {
   if (PROPS.getProperty('ownedFilters') != null) PROPS.deleteProperty('ownedFilters');
 }
 // Your Gmail filters and labels, read live on every load (2 quota units): the board shows them, flags
-// overlaps and drift, and diffs its plan against them. labelInfo carries each label's colour for the Labels view.
+// overlaps and drift, and diffs its plan against them. labelInfo carries each label's colour for the Gmail tab.
 function gmailState_() {
   try {
     var list = labelList_(), names = {};
@@ -103,12 +103,17 @@ function gmailState_() {
     var named = function (key) { return readIds_(key).map(function (id) { return names[id]; }).filter(Boolean); };
     return { filters: filters, gone: r.gone, labels: Object.keys(names).map(function (id) { return names[id]; }), ownedLabels: named('ownedLabels'), adoptedLabels: named('adoptedLabels'),
       labelInfo: list.map(function (l) { return { name: l.name, color: l.color || null, type: l.type }; }),
-      later: { rules: readLater_(), log: JSON.parse(PROPS.getProperty('laterLog') || '{}') } };
+      later: { rules: readLater_(), log: JSON.parse(PROPS.getProperty('laterLog') || '{}') }, auto: JSON.parse(PROPS.getProperty('autoLog') || 'null') };
   } catch (e) {
     return { error: String(e && e.message || e) };
   }
 }
-function saveConfig(json) { putBlob_('config', JSON.parse(json)); return true; }
+function saveConfig(json) {
+  var c = JSON.parse(json), on = c.auto && c.auto.read ? '1' : '0';
+  putBlob_('config', c);
+  if (PROPS.getProperty('autoRead') !== on) { PROPS.setProperty('autoRead', on); syncTrigger_(); } // reading on its own was switched
+  return true;
+}
 function saveSeeds(json) {
   var seeds = JSON.parse(json);
   if (!Array.isArray(seeds)) throw plain_('a contacts file is a JSON list of {match, value, bucket, name}');
@@ -137,6 +142,7 @@ function scanInbox(cursorJson, optsJson) {
   BUDGET = c && c.budget || { tokens: 0, at: 0 };
   if (!st) {
     var snap = getBlob_('snapshot', null) || { threads: [] }, opts = optsJson ? JSON.parse(optsJson) : {}, was = snap.window || {};
+    if (!opts.auto) notAuto_();
     var win = opts.window != null ? !!opts.window : !(was.off || was.error);
     var days = !opts.window && was.days && !was.error ? was.days : S.WINDOW_DAYS; // fewer when 30 didn't fit
     var now = gmail_(S.COST.getProfile, function () { return Gmail.Users.getProfile('me'); }).historyId; // before listing: later changes show up next time
@@ -151,7 +157,7 @@ function scanInbox(cursorJson, optsJson) {
     if (win) d = S.addTimelines(d, stored, since);
     st = { keep: d.keep, fetch: d.fetch, dropped: d.dropped, names: names, historyId: String(now || ''), changes: changes && { add: changes.add, remove: changes.remove },
       relabeled: d.changed.length ? relabeled_(d.changed, mine) : null, inboxIds: inboxIds,
-      win: win ? Object.assign({ days: days, since: since }, windowCounts_(days)) : null };
+      win: win ? Object.assign({ days: days, since: since }, windowCounts_(days)) : null, auto: !!opts.auto };
     putBlob_('scan', st);
     c = { pos: 0, parts: 0, got: 0, began: start };
   }
@@ -176,6 +182,7 @@ function scanInbox(cursorJson, optsJson) {
   var parts = S.splitWindow(S.mergeInbox(stored, st.keep, fetched, st.changes, st.names, st.relabeled), st.inboxIds), threads = parts.inbox;
   // how the read went, kept with the snapshot so the board can show it after the toast is gone
   var read = { fetched: st.fetch.length, relabeled: st.relabeled ? Object.keys(st.relabeled.threads).length : 0, log: !!st.changes, secs: Math.round((Date.now() - (c.began || start)) / 1000) };
+  if (st.auto) read.auto = true; // the header says it read on its own
   var win = st.win && { days: st.win.days, since: st.win.since, threads: parts.window.length, sent: st.win.sent, received: st.win.received };
   var snapshot = { version: 1, account: me, source: 'apps-script', query: 'in:inbox', generatedAt: new Date().toISOString(), historyId: st.historyId, read: read, window: win || { off: true }, threads: threads };
   if (win) delBlob_('recent'); // the inbox is saved first: it has to fit even when the window doesn't
@@ -331,6 +338,7 @@ function applyPlan(planJson, progressJson) {
   BUDGET = p.budget || { tokens: 0, at: 0 };
   var pause = function (step, steps, text) { p.budget = BUDGET; return JSON.stringify({ done: false, progress: JSON.stringify(p), step: step, steps: steps, text: text }); };
   if (p.phase === 'labels') {
+    if (!plan.auto) notAuto_();
     delBlob_('apply.m'); startRecord_(plan);
     p.ids = ensureLabels_(plan.labels, p, plan.recolor);
     adoptLabels_(plan.adoptLabels, p.ids);
@@ -362,20 +370,27 @@ function applyPlan(planJson, progressJson) {
 }
 
 // ---------- archiving later: the cards' timed rules, run every hour by a trigger while there are any ----------
-// Rules live in user property `later` (rules.js laterRules); `laterLog` keeps what each archived, last 14 days.
-function readLater_() { return JSON.parse(PROPS.getProperty('later') || '[]'); }
+// Rules live in blob `timed` (rules.js laterRules; a column's searches outgrow one property, so the first version's
+// property `later` is read once, then dropped); `laterLog` keeps what each archived, last 14 days.
+function readLater_() { return getBlob_('timed', null) || JSON.parse(PROPS.getProperty('later') || '[]'); }
 function setLater_(rules) {
   var was = readLater_();
-  PROPS.setProperty('later', JSON.stringify(rules));
-  if (!rules.length && !was.length) return; // a board that never archives later never touches triggers
+  putBlob_('timed', rules);
+  if (PROPS.getProperty('later') != null) PROPS.deleteProperty('later');
+  if (rules.length || was.length) syncTrigger_(); // a board that never archives later never touches triggers
+}
+// The one hourly trigger (handler runLater) exists while a column or card archives later, or you switched on reading on
+// its own (config.auto.read). Called when either changes: Apply (setLater_) or a save that switches it (saveConfig).
+function syncTrigger_() {
+  var c = getBlob_('config', null), want = readLater_().length > 0 || !!(c && c.auto && c.auto.read);
   var mine = ScriptApp.getProjectTriggers().filter(function (t) { return t.getHandlerFunction() === 'runLater'; });
-  if (rules.length && !mine.length) ScriptApp.newTrigger('runLater').timeBased().everyHours(1).create();
-  if (!rules.length) mine.forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  if (want && !mine.length) ScriptApp.newTrigger('runLater').timeBased().everyHours(1).create();
+  if (!want) mine.forEach(function (t) { ScriptApp.deleteTrigger(t); });
 }
 function runLater() {
-  var S = LabelboardSync, start = Date.now(), log = JSON.parse(PROPS.getProperty('laterLog') || '{}'), now = Date.now();
+  var S = LabelboardSync, start = Date.now(), log = JSON.parse(PROPS.getProperty('laterLog') || '{}'), now = Date.now(), rules = readLater_();
   BUDGET = { tokens: 0, at: 0 };
-  readLater_().forEach(function (r) {
+  rules.forEach(function (r) {
     if (Date.now() - start > 4 * 60000) return; // the next run carries on
     var ids = [];
     r.queries.forEach(function (q) {
@@ -387,9 +402,51 @@ function runLater() {
     if (ids.length) l.push([now, ids.length]);
     if (l.length) log[r.id] = l; else delete log[r.id];
   });
-  Object.keys(log).forEach(function (k) { if (!readLater_().some(function (r) { return r.id === k; })) delete log[k]; });
+  Object.keys(log).forEach(function (k) { if (!rules.some(function (r) { return r.id === k; })) delete log[k]; });
   PROPS.setProperty('laterLog', JSON.stringify(log));
+  if (Date.now() - start < 60000) runAuto_(start); // a long archiving hour leaves the read for the next one: Apps Script stops a run at 6 min
 }
+
+// ---------- on its own (Settings → Runs on its own): read what changed every 6 hours, then maybe apply ----------
+// Never a first read, never while a read, an Apply or an undo of yours runs (they refuse to start while this one does,
+// cache key `auto`). It applies only when your settings are the ones you last applied (rules.js autoPlan), so the
+// only news is what the rules placed; each one is an Apply in the record, undone like yours. `autoLog`: the last run.
+var AUTO_EVERY = 6 * 3600e3;
+function runAuto_(start) {
+  var config = getBlob_('config', null), auto = config && config.auto || {}, snap = getBlob_('snapshot', null);
+  if (!auto.read || !snap || !snap.threads.length || Date.now() - Date.parse(snap.generatedAt) < AUTO_EVERY) return;
+  if (getBlob_('scan', null) || CACHE.get('apply.m.n') || readRecord_().undo) return; // yours is running: the next hour tries again
+  var lock = LockService.getUserLock(); if (!lock.tryLock(1000)) return;
+  CACHE.put('auto', String(Date.now()), 600);
+  var log = { at: Date.now() };
+  try {
+    var c = null, res;
+    do { res = scanInbox(c, JSON.stringify({ auto: true })); c = res.next; } while (!res.done && Date.now() - start < 3 * 60000);
+    if (!res.done) { delBlob_('scan'); log.read = 'unfinished'; return; }
+    log.read = { fetched: res.fetched || 0 };
+    if (auto.apply) log.apply = Date.now() - start < 3.5 * 60000 ? autoApply_(config, start) : { waits: 'time' };
+  } catch (e) {
+    log.error = String(e && e.message || e).replace(/^Labelboard: /, '');
+  } finally {
+    PROPS.setProperty('autoLog', JSON.stringify(log)); CACHE.remove('auto'); lock.releaseLock();
+  }
+}
+// What autoPlan finds to do, as Apply would do it: { applied: summary } | { nothing } | { waits: 'settings' | 'stopped' }.
+function autoApply_(config, start) {
+  var rec = readRecord_(), last = rec.applies[rec.applies.length - 1], R = LabelboardRules;
+  if (!last || !last.done) return { waits: 'stopped' };
+  if (last.settings !== R.settingsKey(config)) return { waits: 'settings' };
+  var g = gmailState_(); if (g.error) throw new Error(g.error);
+  var plan = R.autoPlan(getBlob_('snapshot', null), getBlob_('recent', null), config, getBlob_('seeds', []), g);
+  var names = {}; labelList_().forEach(function (l) { names[l.id] = l.name; });
+  var o = readOwned_(), live = listFilters_(names), r = LabelboardSync.reconcile(o.filters, live, o.gone), a = LabelboardSync.filterActions(plan.filters, live, r.owned, r.gone, []);
+  if (!a.create.length && !a.remove.length && !plan.backfill.length) return { nothing: true };
+  var p = null, out;
+  do { out = JSON.parse(applyPlan(JSON.stringify(plan), p)); p = out.progress; } while (!out.done && Date.now() - start < 4.5 * 60000);
+  return out.done ? { applied: out.summary } : { waits: 'stopped' };
+}
+// A read, an Apply or an undo of yours waits while one on its own runs (a minute or two).
+function notAuto_() { if (CACHE.get('auto')) throw plain_('Labelboard is reading your mail on its own right now. Nothing changed. Try again in a minute.'); }
 // The record (blob `record`: not "apply…", which would put it in the 6 h cache) keeps every Apply so it can be
 // undone. Its entry is written before the first Gmail write, so a full storage stops Apply with nothing changed.
 function readRecord_() { return getBlob_('record', null) || { applies: [] }; }
@@ -399,6 +456,8 @@ function startRecord_(plan) {
   var rec = readRecord_(), last = rec.applies[rec.applies.length - 1], e = LabelboardSync.recordApply(plan, Date.now());
   if (rec.undo) throw plain_('An undo is still unfinished. Nothing was applied. Open Review changes and finish undoing first.');
   if (plan.later) e.later = readLater_(); // the timed rules before this Apply, for its undo
+  if (plan.settings) e.settings = plan.settings; // what applying on its own compares with
+  if (plan.auto) e.auto = true;
   if (last && !last.done) rec.applies[rec.applies.length - 1] = LabelboardSync.mergeRecord(last, e); else rec.applies.push(e);
   delete rec.undone;
   try { saveRecord_(rec); } catch (err) {
@@ -575,7 +634,7 @@ function summary_(log, plan) {
     log.kept && log.kept.length + ' kept because they still hold mail or labels',
     log.skipped && log.skipped.length + ' not moved (' + log.skipped.join(', ') + '): read again and review', log.filtersCreated && log.filtersCreated + ' filters created',
     log.filtersRemoved && log.filtersRemoved + ' old filters removed', log.filtersLeftOut && log.filtersLeftOut + ' filters left out (deleted in Gmail)',
-    n && n + ' threads sorted', out && out + ' left the inbox', nr && nr + ' marked read', later && later + (later === 1 ? ' card archives' : ' cards archive') + ' later, checked every hour',
+    n && n + ' threads sorted', out && out + ' left the inbox', nr && nr + ' marked read', later && 'archiving later for ' + later + (later === 1 ? ' column or card' : ' columns and cards') + ', checked every hour',
     log.missing && log.missing + ' no longer existed']
     .filter(Boolean).join(', ') || 'Nothing to change';
 }
@@ -588,6 +647,7 @@ function applyUndo(kind, keepJson) {
   var S = LabelboardSync, rec = readRecord_(), start = Date.now(), late = function () { return Date.now() - start > SLICE_MS; };
   var u = rec.undo;
   if (!u) {
+    notAuto_();
     var all = kind === 'all';
     if (!all && (!rec.applies.length || rec.undone)) throw plain_('There is no Apply to undo (Undo goes back one Apply). Nothing in Gmail changed.');
     u = rec.undo = { kind: all ? 'all' : 'last', n: all ? rec.applies.length : 1, keep: all && keepJson ? JSON.parse(keepJson) : [], phase: 'filters', op: 0, log: {} };

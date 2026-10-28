@@ -68,8 +68,7 @@
   // Cards are built over the inbox plus the window's mail outside it (what skipped the inbox, minus threads
   // only you wrote in). Counts, backfill and re-sort still take the inbox alone (they check the INBOX label).
   function rebuild() {
-    var out = S.recent ? S.recent.threads.filter(function (t) { return !t.msgs || t.msgs.some(function (m) { return !m[1]; }); }) : [];
-    S.mail = { threads: S.snapshot.threads.concat(out) };
+    S.mail = R.mailOf(S.snapshot, S.recent);
     S.built = R.buildCards(S.mail, S.config, S.seeds);
     S.byId = {}; S.mail.threads.forEach(function (t) { S.byId[t.id] = t; });
     S.cardByKey = {}; S.built.cards.forEach(function (c) { S.cardByKey[c.key] = c; });
@@ -103,7 +102,8 @@
   }
   var rendering = false; // render() draws the view once, at the end
   // ---------- views: the board, or one of the views beside it (views.js), kept in config.ui.view ----------
-  function view() { var v = ui().view; return S.snapshot && S.snapshot.threads.length && VIEWS.NAMES[v] ? v : 'board'; }
+  var MERGED = { flow: 'gmail', filters: 'gmail', labels: 'gmail', overview: 'inbox', threads: 'inbox' }; // tabs before Oct 2026, kept in config.ui.view
+  function view() { var v = MERGED[ui().view] || ui().view; return S.snapshot && S.snapshot.threads.length && VIEWS.NAMES[v] ? v : 'board'; }
   function applyView() {
     var v = view(), board = v === 'board';
     document.body.dataset.view = v;
@@ -111,7 +111,7 @@
     document.querySelectorAll('[data-view]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.view === v); b.tabIndex = b.dataset.view === v ? 0 : -1; });
     if (!board) { $('rack').classList.add('compact'); drawView(v); } else { VIEWS.hideTip(); $('rack').classList.remove('compact'); if (S.st) VIEWS.pane(); }
   }
-  function drawView(v) { if (v === 'home') { VIEWS.hideTip(); HOME.render(); } else if (v === 'labels') { VIEWS.hideTip(); LABELS.render(); } else VIEWS.render(v); }
+  function drawView(v) { if (v === 'home') { VIEWS.hideTip(); HOME.render(); } else if (v === 'gmail') GMAIL.render(); else VIEWS.render(v); }
   function refreshView() { if (!rendering && S.snapshot && view() !== 'board') drawView(view()); }
   $('brand').addEventListener('click', function () { if (S.snapshot) showView('home'); });
   $('views').addEventListener('click', function (e) {
@@ -142,7 +142,7 @@
     var out = S.mail.threads.length - snap.threads.length, days = snap.window && snap.window.days || 30;
     $('meta').innerHTML = '<span>' + h(snap.account) + '</span>' + (!snap.threads.length ? '' : '<span>' + fmt(snap.threads.length) + ' inbox threads</span>' +
       (out ? '<span title="Mail of the last ' + days + ' days that is out of your inbox: archived by you or by a filter. Cards count it; the inbox numbers don\'t.">+' + fmt(out) + ' archived, last ' + days + ' days</span>' : '') +
-      '<span class="' + (age.stale ? 'stale' : '') + '" title="' + h(how) + '">read ' + h(age.text) + (rd ? ', ' + fmt(rd.fetched) + ' new or changed' : '') + '</span>' + appliedHtml()) +
+      '<span class="' + (age.stale ? 'stale' : '') + '" title="' + h(how) + '">read ' + (rd && rd.auto ? 'on its own ' : '') + h(age.text) + (rd ? ', ' + fmt(rd.fetched) + ' new or changed' : '') + '</span>' + appliedHtml()) +
       (S.mode === 'apps-script' ? '' : snap.source === 'demo' ? '<span class="pill" title="A made-up mailbox (dev/demo.mjs). Nothing here is real mail.">Demo: made-up mail</span>'
         : '<span class="pill" title="Changes save on this computer and Gmail is not touched. To see new mail, ask Claude to refresh the snapshot.">Preview: Gmail is not touched</span>');
     $('btn-refresh').hidden = !API.refresh; // only the Apps Script version can read Gmail itself
@@ -242,15 +242,26 @@
   }
   // ---------- what a card does to its mail (rules.js cardDoes): its own actions, condition, archiving later ----------
   // In words: "Skips inbox, marks read · when through portfolio@x.com · archives 3 days after". Column defaults aren't said.
-  var ACT_WORDS = { archive: ['skips inbox', 'stays in inbox'], read: ['marks read', 'stays unread'], star: ['stars it'], trash: ['deletes it'] };
+  var ACT_WORDS = { read: ['marks read', 'stays unread'], star: ['stars it'], trash: ['deletes it'] };
   function doesWords(c, b) {
-    var own = (S.config.cards || {})[c.key] || {}, act = own.act || {}, d = R.cardDoes(c, S.config, b), w = d.when, out = [];
+    var own = (S.config.cards || {})[c.key] || {}, act = own.act || {}, d = R.cardDoes(c, S.config, b), w = d.when, out = [], lv = R.cardLeaves(own);
+    if (lv) out.push(leavesWords(lv).toLowerCase());
     Object.keys(ACT_WORDS).forEach(function (k) { if (act[k] !== undefined && act[k] !== null) { var x = ACT_WORDS[k][act[k] ? 0 : 1]; if (x) out.push(x); } });
     if (act.important) out.push(act.important === 'always' ? 'always important' : 'never important');
     var s = out.join(', ');
     if (w && d.extra) s += ' · when ' + whenWords(w);
-    if (d.later) s += (s ? ' · ' : '') + (d.later.read ? 'archives once read' : 'archives ' + plural(d.later.days, 'day') + ' after');
     return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  }
+  // When mail leaves the inbox (rules.js leavesOf): one menu for a column, its filter row on the Gmail tab and a card.
+  var LEAVES = [['never', 'Stays in the inbox'], ['now', 'Leaves right away'], ['d1', 'Leaves after 1 day'], ['d3', 'Leaves after 3 days'], ['d7', 'Leaves after a week'],
+    ['d14', 'Leaves after 2 weeks'], ['d30', 'Leaves after a month'], ['read', 'Leaves once read']];
+  function leavesWords(v) { var x = LEAVES.filter(function (l) { return l[0] === v; })[0]; return x ? x[1] : /^d\d+$/.test(v || '') ? 'Leaves after ' + plural(+v.slice(1), 'day') : ''; }
+  // inherit: the column's answer, for a card's "as the column" (its value is ''); terse: just "As the column", the row above says it
+  function leavesSelect(attrs, v, inherit, terse) {
+    var list = LEAVES.slice();
+    if (v && !list.some(function (l) { return l[0] === v; })) list.push([v, leavesWords(v)]); // set in an imported settings file
+    if (inherit != null) list.unshift(['', terse ? 'As the column' : 'As the column: ' + leavesWords(inherit).toLowerCase()]);
+    return '<select ' + attrs + '>' + list.map(function (o) { return '<option value="' + h(o[0]) + '"' + (o[0] === v ? ' selected' : '') + '>' + h(o[1]) + '</option>'; }).join('') + '</select>';
   }
   function whenWords(w) {
     return [w.via && 'through ' + w.via, w.notMe && 'not sent to you by name', w.att && 'with an attachment', w.subject.length && 'the subject has ' + w.subject.join(' or '),
@@ -331,7 +342,7 @@
       (special ? '' : '<button class="stamp" type="button" data-settings="' + h(b.id) + '" aria-label="Edit ' + h(b.name) + '" title="Edit this column" style="background:' + (bandOf(b) || '#ccc') + '"></button>') +
       '<h3 class="col-grab" title="Drag to reorder">' + h(b.name) + '</h3>' + foldBtn(b.id, b.name) + '</div>' +
       (special ? '<p class="col-desc">' + h(b.description || '') + '</p>' : '<div class="col-sub">' + labelChip(b) +
-        '<label class="switch"><input type="checkbox" data-archive="' + h(b.id) + '"' + (b.archive ? ' checked' : '') + '> Skip inbox</label></div>') +
+        leavesSelect('class="leaves" data-leaves="' + h(b.id) + '" aria-label="When mail in ' + h(b.name) + ' leaves the inbox"', R.leavesOf(b)) + '</div>') +
       ((pills = colFsHtml(b) + colMailHtml(b, cards)) ? '<div class="col-sub col-gmail">' + pills + '</div>' : '') +
       '<div class="col-sub"><span><b>' + fmt(threads - gone) + '</b> in your inbox' + (gone ? ' +' + fmt(gone) + ' archived' : '') + '</span><span>' + plural(cards.length, 'card') + '</span></div>' +
       (open ? '<div class="col-sub"><button type="button" class="linkish" data-accept="' + h(b.id) + '" title="Mark ' + (open === 1 ? 'it' : 'them') + ' as placed by you: ' + (open === 1 ? 'it stays' : 'they stay') + ' here whatever the suggestions say later">Accept ' + (cl === open ? 'Claude\'s ' + (open === 1 ? 'card' : fmt(open) + ' cards') : (open === 1 ? 'the suggested card' : 'the ' + fmt(open) + ' suggested cards') + (cl ? ' (' + fmt(cl) + ' from Claude)' : '')) + '</button></div>' : '') + '</div>';
@@ -466,7 +477,7 @@
     var ls = labelState(pf), hk = ls ? ls.hk : null, labelsNew = hk ? hk.recolor.length + hk.repaint + hk.moves.length + hk.adoptLabels.length : 0;
     S.fs = { filters: pf.filters, status: st, byCard: byCard, later: later, laterNew: laterNew, pending: st ? st.actions.create.length + st.actions.remove.length + adopt.length + (S.config.release || []).length + newLabels + laterNew + labelsNew : null };
   }
-  // Gmail's labels against the board (labels.js): rows for the Labels view and what Apply does about them (hk). plan: a
+  // Gmail's labels against the board (labels.js): rows for the Gmail tab and what Apply does about them (hk). plan: a
   // buildPlan, or planFilters when only counting (its labels lack the inbox's AI-read sub-labels). null: labels not read.
   function labelState(plan) {
     var g = S.gmail || {};
@@ -596,7 +607,7 @@
   // The trace in a drawer: one line, and the way to the Filters view, which shows it day by day.
   function howHtml(line) {
     return line ? '<div class="field how"><span class="fs-head">' + FUNNEL + 'In the mail Labelboard read</span><p>' + h(line) + '.</p>' +
-      '<p class="note">Gmail doesn\'t record who added a label: this checks which filters match. <button type="button" class="linkish" data-goto="filters">See it day by day</button></p></div>' : '';
+      '<p class="note">Gmail doesn\'t record who added a label: this checks which filters match. <button type="button" class="linkish" data-goto="gmail">See it day by day</button></p></div>' : '';
   }
   function wireGoto() {
     document.querySelectorAll('#dr-body [data-goto]').forEach(function (el) { el.onclick = function () { closeDrawer(); showView(el.dataset.goto); }; });
@@ -736,29 +747,26 @@
     }
     var how = b && b.label ? howLine(howOf('col:' + b.id, c.threads)) : '';
     return '<div class="field" id="dr-fs"><span class="fs-head">Gmail filter ' + tag + '</span><div class="query">' + h(query) + '</div><p class="note">' + note + '</p>' +
-      (how ? '<p class="note">Its mail so far: ' + h(how) + '. <button type="button" class="linkish" data-goto="filters">See it day by day</button></p>' : '') + '</div>';
+      (how ? '<p class="note">Its mail so far: ' + h(how) + '. <button type="button" class="linkish" data-goto="gmail">See it day by day</button></p>' : '') + '</div>';
   }
-  // The drawer's "What happens to its mail": Gmail's actions (the column's by default), a condition for the yeses,
-  // archiving later, and an idea from its mail (R.actionHint). Every change makes the card yours, like a sub-label.
-  var LATER = [['', 'No'], ['d1', '1 day after it arrives'], ['d3', '3 days after it arrives'], ['d7', 'A week after it arrives'], ['d14', '2 weeks after it arrives'], ['d30', 'A month after it arrives'], ['read', 'Once you\'ve read it']];
+  // The drawer's "What happens to its mail": when it leaves the inbox and Gmail's other actions (the column's by default),
+  // a condition for the yeses, and an idea from its mail (R.actionHint). Every change makes the card yours, like a sub-label.
   function doesHtml(c, b) {
     if (!b || !b.label) return '';
-    var own = (S.config.cards || {})[c.key] || {}, act = own.act || {}, w = R.whenOf(own.when) || { via: '', notMe: false, att: false, subject: [], except: [] }, later = R.laterOf(own.later), d = R.cardDoes(c, S.config, b), col = R.colActs(b);
+    var own = (S.config.cards || {})[c.key] || {}, act = own.act || {}, w = R.whenOf(own.when) || { via: '', notMe: false, att: false, subject: [], except: [] }, d = R.cardDoes(c, S.config, b), col = R.colActs(b);
     var yn = function (k, name) {
       var v = act[k] === undefined || act[k] === null ? '' : act[k] ? '1' : '0';
       return '<label class="field">' + name + '<select data-act="' + k + '"><option value=""' + (v === '' ? ' selected' : '') + '>As the column (' + (col[k] ? 'yes' : 'no') + ')</option>' +
         '<option value="1"' + (v === '1' ? ' selected' : '') + '>Yes</option><option value="0"' + (v === '0' ? ' selected' : '') + '>No</option></select></label>';
     };
     var opt = function (v, text, cur) { return '<option value="' + h(v) + '"' + (v === cur ? ' selected' : '') + '>' + h(text) + '</option>'; };
-    var aliases = (S.config.aliases || []).map(R.addr).filter(Boolean), lv = later ? (later.read ? 'read' : 'd' + later.days) : '', choices = LATER.slice();
-    if (lv && !LATER.some(function (x) { return x[0] === lv; })) choices.push([lv, plural(later.days, 'day') + ' after it arrives']); // set in an imported settings file
-    var hint = R.actionHint(c, S.byId, S.config), byLater = S.gmail.later && S.gmail.later.log && S.gmail.later.log[c.key];
-    var gone = byLater ? byLater.reduce(function (n, x) { return n + x[1]; }, 0) : 0, live = S.gmail.later && (S.gmail.later.rules || []).some(function (r) { return r.id === c.key; });
+    var aliases = (S.config.aliases || []).map(R.addr).filter(Boolean), rid = laterId(c, b), hint = R.actionHint(c, S.byId, S.config), byLater = S.gmail.later && S.gmail.later.log && S.gmail.later.log[rid];
+    var gone = byLater ? byLater.reduce(function (n, x) { return n + x[1]; }, 0) : 0, live = S.gmail.later && (S.gmail.later.rules || []).some(function (r) { return r.id === rid; });
     return '<div class="field does" id="dr-does"><span class="fs-head">What happens to its mail</span>' +
       (hint ? '<p class="note does-hint">' + h(hint.text) + ' <button type="button" class="linkish" id="dr-hint">Do that</button></p>' : '') +
-      '<div class="does-grid">' + yn('archive', 'Skip the inbox') + yn('read', 'Mark as read') +
+      '<div class="does-grid"><label class="field">Leaves the inbox' + leavesSelect('data-card-leaves', R.cardLeaves(own), R.leavesOf(b)) + '</label>' + yn('read', 'Mark as read') +
       '<label class="field">Important<select data-act="important">' + opt('', 'As Gmail decides', act.important || '') + opt('always', 'Always', act.important || '') + opt('never', 'Never', act.important || '') + '</select></label>' +
-      '<label class="field">Archive it later<select data-later>' + choices.map(function (x) { return opt(x[0], x[1], lv); }).join('') + '</select></label></div>' +
+      '</div>' +
       '<div class="does-checks"><label><input type="checkbox" data-act="star"' + (act.star ? ' checked' : '') + '> Star it</label>' +
       '<label class="danger-text"><input type="checkbox" data-act="trash"' + (act.trash ? ' checked' : '') + '> Delete it</label></div>' +
       '<p class="note does-confirm" id="dr-trash" hidden>New mail like this goes straight to the trash, where Gmail deletes it after 30 days. Mail already in your inbox only leaves it. <button type="button" class="btn danger-fill" id="dr-trash-yes">Delete new mail like this</button> <button type="button" class="btn" id="dr-trash-no">Keep it</button></p>' +
@@ -769,9 +777,14 @@
       '<label><input type="checkbox" data-when="att"' + (w.att ? ' checked' : '') + '> It has an attachment</label>' +
       '<label class="field">The subject has any of<input data-when="subject" value="' + h(w.subject.join(', ')) + '" placeholder="report, invoice"></label>' +
       '<label class="field">Except from or about<input data-when="except" value="' + h(w.except.join(', ')) + '" placeholder="ceo@acme.com, urgent"></label>' +
-      '</details>' + doesNote(c, b, d, later, live, gone) + '</div>';
+      '</details>' + doesNote(c, b, d, d.later, live, gone) + '</div>';
   }
   // What the settings above do, in numbers: inbox threads on Apply, new mail, the hourly archiving.
+  // The hourly rule a card's archiving runs in (rules.js laterRules): its own, or its column's when it follows the column.
+  function laterId(c, b) {
+    var own = (S.config.cards || {})[c.key];
+    return R.cardLeaves(own) || R.whenOf(own && own.when) || (c.must && c.must.length) ? c.key : 'col:' + b.id;
+  }
   function doesNote(c, b, d, later, live, gone) {
     var inbox = c.threads.filter(function (id) { return inInbox(S.byId[id]); }), ts = inbox.map(function (id) { return S.byId[id]; }), out = [];
     if (d.extra) {
@@ -785,15 +798,19 @@
     else if (later) out.push((live ?'Archiving later is on: Labelboard checks every hour.' : 'Archiving later starts when you apply; Labelboard then checks every hour.') + (gone ? ' It archived ' + plural(gone, 'thread') + ' in the last 14 days.' : ''));
     return out.length ? '<p class="note does-sum">' + out.map(h).join(' ') + '</p>' : '';
   }
+  // A change to a card's own settings (its drawer, the Gmail tab): your edit makes it yours, like a move. The caller redraws.
+  function cardEdit(key, fn) {
+    var p = R.placement(S.cardByKey[key], S.config), cur = S.config.cards[key] || { bucket: p.bucket };
+    cur.bucket = cur.bucket || p.bucket; delete cur.by; delete cur.why;
+    fn(cur);
+    ['act', 'when', 'later'].forEach(function (k) { if (cur[k] && !Object.keys(cur[k]).length) delete cur[k]; });
+    if (cur.when && !R.whenOf(cur.when)) delete cur.when;
+    S.config.cards[key] = cur;
+  }
   function wireDoes(key, c, b) {
     if (!$('dr-does')) return;
     var edit = function (fn) {
-      var p = R.placement(c, S.config), cur = S.config.cards[key] || { bucket: p.bucket };
-      cur.bucket = cur.bucket || p.bucket; delete cur.by; delete cur.why; // your edit makes it yours
-      fn(cur);
-      ['act', 'when', 'later'].forEach(function (k) { if (cur[k] && !Object.keys(cur[k]).length) delete cur[k]; });
-      if (cur.when && !R.whenOf(cur.when)) delete cur.when;
-      S.config.cards[key] = cur;
+      cardEdit(key, fn);
       var top = $('dr-body').scrollTop; renderRack(); renderBoard(); placed(); openCard(key); $('dr-body').scrollTop = top;
     };
     var setAct = function (k, v) { edit(function (cur) { cur.act = cur.act || {}; if (v === undefined) delete cur.act[k]; else cur.act[k] = v; }); };
@@ -808,9 +825,10 @@
     };
     $('dr-trash-yes').onclick = function () { setAct('trash', true); toast('New mail like this goes to the trash once you apply'); };
     $('dr-trash-no').onclick = function () { $('dr-trash').hidden = true; };
-    $('dr-does').querySelector('[data-later]').onchange = function () {
+    $('dr-does').querySelector('[data-card-leaves]').onchange = function () {
       var v = this.value;
-      edit(function (cur) { if (!v) delete cur.later; else cur.later = v === 'read' ? { read: true } : { days: Number(v.slice(1)) }; });
+      edit(function (cur) { R.setCardLeaves(cur, v); });
+      toast('Saved: ' + (v ? leavesWords(v).toLowerCase() : 'as the column'));
     };
     var list = function (s) { return s.split(',').map(function (x) { return x.trim(); }).filter(Boolean); };
     $('dr-does').querySelectorAll('[data-when]').forEach(function (el) {
@@ -926,7 +944,7 @@
     if (rec.undone) return '<button type="button" class="meta-link" data-review title="' + h(rec.undone.summary) + '">' + (rec.undone.kind === 'all' ? 'removed everything ' : 'undone ') + h(ago(rec.undone.at)) + '</button>';
     if (!e) return '';
     var a = applyLines(e), n = [a.filters && plural(a.filters, 'filter'), a.threads && plural(a.threads, 'thread')].filter(Boolean).join(', ');
-    return '<button type="button" class="meta-link" data-review title="' + h('Applied ' + new Date(e.at).toLocaleString('en-US') + ': ' + a.lines.join('; ') + '. Open Review changes to see it or undo it.') + '">applied ' + h(ago(e.at)) + (n ? ': ' + n : '') + '</button>';
+    return '<button type="button" class="meta-link" data-review title="' + h('Applied ' + (e.auto ? 'on its own ' : '') + new Date(e.at).toLocaleString('en-US') + ': ' + a.lines.join('; ') + '. Open Review changes to see it or undo it.') + '">applied ' + (e.auto ? 'on its own ' : '') + h(ago(e.at)) + (n ? ': ' + n : '') + '</button>';
   }
   // The top of Review: an undo to finish, what the last Apply did with its Undo, or what the undo did.
   function recordHtml() {
@@ -996,26 +1014,21 @@
   // The backfill keeps only what Gmail doesn't have yet: a thread that has the label and stays in the inbox is left alone.
   // `had`: threads of a skip-inbox label that already carry it (they only leave the inbox), so an undo leaves their label on.
   // Labels (labels.js housekeeping): colours fixed on labels already in Gmail, labels moved (left over, or yours folded in),
-  // labels of yours taken as they are; filters of yours that go with a fold are adopted first (LABELS.syncFilters).
+  // labels of yours taken as they are; filters of yours that go with a fold are adopted first (GMAIL.syncFilters).
   function applyPlan() {
     var ls = labelState();
-    if (ls && LABELS.syncFilters(ls.rows)) { save(); ls = labelState(); }
-    var plan = ls ? ls.plan : R.buildPlan(S.snapshot, S.built, S.config, S.seeds, S.gmail), has = function (e) { return function (id) { return S.byId[id].labels.indexOf(e.label) >= 0; }; };
+    if (ls && GMAIL.syncFilters(ls.rows)) { save(); ls = labelState(); }
+    var plan = ls ? ls.plan : R.buildPlan(S.snapshot, S.built, S.config, S.seeds, S.gmail);
     S.house = ls; // for Review's words
     if (ls) {
       plan.labels = plan.labels.concat(ls.hk.create);
       plan.recolor = ls.hk.recolor; plan.moves = ls.hk.moves; plan.adoptLabels = ls.hk.adoptLabels; plan.handover = ls.hk.handover;
     }
-    // A mark-as-read entry also keeps threads that have the label but are unread (`unread`: the ones it marks).
-    plan.backfill = plan.backfill.map(function (e) {
-      var unread = e.read ? e.threadIds.filter(function (id) { return S.byId[id].labels.indexOf('UNREAD') >= 0; }) : [];
-      var o = Object.assign({}, e, { threadIds: e.threadIds.filter(function (id) { return e.archive || !has(e)(id) || unread.indexOf(id) >= 0; }), had: e.archive || e.read ? e.threadIds.filter(has(e)) : [] });
-      if (e.read) o.unread = unread;
-      return o;
-    }).filter(function (e) { return e.threadIds.length; });
+    plan.backfill = R.trimBackfill(plan.backfill, S.byId);
     plan.adopt = adoptIds();
     plan.release = S.config.release || [];
     plan.restore = S.config.restoreFilters || [];
+    plan.settings = R.settingsKey(S.config); // applying on its own waits until the settings are the ones applied
     return plan;
   }
   // What Apply does to labels beyond the board's own, in Review's words (S.house: labelState, set by applyPlan).
@@ -1030,7 +1043,7 @@
     if (paint) out.push(plural(paint, 'label') + ' get' + many(paint, 's', '') + ' ' + many(paint, 'its', 'their') + ' column\'s colour: the column\'s own label its colour, sub-labels and folders a lighter shade.');
     Object.keys(folds).forEach(function (top) {
       var n = folds[top].length;
-      out.push('Your label <b>' + h(top) + '</b>' + (n > 1 ? ' and ' + plural(n - 1, 'label') + ' under it fold' : ' folds') + ' into ' + h(by[top].hand.into) + ': the mail moves, inbox and archived, then the old ' + many(n, 'label is', 'labels are') + ' deleted.');
+      out.push('Your label <b>' + h(top) + '</b>' + (n > 1 ? ' and ' + plural(n - 1, 'label') + ' under it merge' : ' merges') + ' into ' + h(by[top].hand.into) + ': the mail moves, inbox and archived, then the old ' + many(n, 'label is', 'labels are') + ' deleted.');
     });
     if (hk.adoptLabels.length) out.push(plural(hk.adoptLabels.length, 'label') + ' of yours become' + many(hk.adoptLabels.length, 's', '') + ' the board\'s, as ' + many(hk.adoptLabels.length, 'it is', 'they are') + ': ' + hk.adoptLabels.slice(0, 4).map(h).join(', ') + (hk.adoptLabels.length > 4 ? '…' : '') + '.');
     if (left.length) out.push(plural(left.length, 'label') + ' Labelboard made for an earlier layout: the mail moves to where each card is now (' + left.slice(0, 2).map(function (m) { return h(m.from) + ' → ' + h(m.to); }).join(', ') + (left.length > 2 ? ', …' : '') + '), then ' + many(left.length, 'it is', 'they are') + ' deleted.');
@@ -1066,14 +1079,14 @@
       li(plan.release.length ? plural(plan.release.length, 'filter') + ' handed back to you.' : '') +
       li('Your inbox: ' + (nAdd || nLeave || nRead ? [nAdd && plural(nAdd, 'thread') + ' get labels', nLeave && fmt(nLeave) + (nAdd ? '' : ' threads') + ' leave the inbox', nRead && fmt(nRead) + (nAdd || nLeave ? '' : ' threads') + ' are marked read'].filter(Boolean).join(', ') : 'no thread needs a label') +
         '. It goes from <b>' + fmt(st.before.inbox) + '</b> to <b>' + fmt(st.after.inbox) + '</b>.') +
-      li(S.fs && S.fs.laterNew ? (later.length ? plural(later.length, 'card') + ' archive' + (later.length === 1 ? 's' : '') + ' mail later: Labelboard checks your inbox every hour and archives what is due (' + h(later.map(function (r) { return r.title; }).slice(0, 4).join(', ') + (later.length > 4 ? '…' : '')) + ').' : 'Archiving later stops' + (laterWas ? ' for the ' + plural(laterWas, 'card') + ' that had it' : '') + '.') : '') +
+      li(S.fs && S.fs.laterNew ? (later.length ? 'Mail leaves the inbox later for ' + plural(later.length, 'column or card', 'columns and cards') + ': Labelboard checks your inbox every hour and archives what is due (' + h(later.map(function (r) { return r.title; }).slice(0, 4).join(', ') + (later.length > 4 ? '…' : '')) + ').' : 'Archiving later stops' + (laterWas ? ' for the ' + plural(laterWas, 'card') + ' that had it' : '') + '.') : '') +
       li(nOff ? plural(nOff, 'thread') + ' lose a label Labelboard gave them before (' + h(plan.unlabel.map(function (e) { return e.label; }).join(', ')) + '): their card moved.' : '') +
-      house.lines.map(li).join('') + (house.lines.length ? '<li><button type="button" class="linkish" id="rv-labels">See every label in Labels</button></li>' : '') +
+      house.lines.map(li).join('') + (house.lines.length ? '<li><button type="button" class="linkish" id="rv-labels">See every label on the Gmail tab</button></li>' : '') +
       '</ul><h3 class="rv-h">What doesn\'t change</h3><ul class="rv-list">' +
       li(done ? plural(done, 'inbox thread') + ' already ' + (done === 1 ? 'has its' : 'have their') + ' labels in Gmail: Apply leaves ' + (done === 1 ? 'it' : 'them') + ' as ' + (done === 1 ? 'it is' : 'they are') + '.' : '') +
       li('Mail outside your inbox (archived, sent) keeps the labels it has' + (house.moves ? ', apart from the labels that move above' : '') + '. Re-sorting only touches the inbox threads in this read.') +
       li(g.filters ? (yours ? 'Your own ' + plural(yours, 'filter') : 'Filters you make later') + ': Labelboard never edits or deletes them' + (house.handed ? ', unless one goes with a label you handed over' : '') + '.' : 'Filters you made yourself: never edited or deleted.') +
-      li('Labels you made yourself stay as they are' + (house.handed ? ', apart from the ones you handed over above' : '') + '. Hand one over in Labels.') +
+      li('Labels you made yourself stay as they are' + (house.handed ? ', apart from the ones you handed over above' : '') + '. Merge or hand one over on the Gmail tab.') +
       li('No mail is deleted or sent, and Labelboard never opens message bodies.') + '</ul>';
   }
   // A filter's actions in words, and a label's (all its filters): "Label and skip inbox", "Label; some filters also star".
@@ -1114,7 +1127,7 @@
       (applyOk ? '' : S.record.undo ? '<p class="note">Apply waits until the undo above finishes.</p>'
         : '<p class="note">Apply works once Labelboard runs as your Apps Script. Until then, download the filters and import them in Gmail: Settings, Filters and blocked addresses, Import filters.</p>');
     if ($('rv-reread')) $('rv-reread').onclick = function () { closeReview(); refresh().then(openReview); };
-    if ($('rv-labels')) $('rv-labels').onclick = function () { closeReview(); showView('labels'); };
+    if ($('rv-labels')) $('rv-labels').onclick = function () { closeReview(); showView('gmail'); };
     $('rv-xml').onclick = function () {
       var blob = new Blob([R.toGmailXml(plan, S.snapshot.account)], { type: 'application/xml' }), a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = 'labelboard-filters.xml'; a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
@@ -1193,10 +1206,10 @@
     });
   }, true);
   document.addEventListener('change', function (e) {
-    var a = e.target.dataset && e.target.dataset.archive;
+    var a = e.target.dataset && e.target.dataset.leaves;
     if (a) {
-      bucket(a).archive = e.target.checked; placed(); toast(bucket(a).name + (e.target.checked ? ' will skip the inbox' : ' stays in the inbox'));
-      var sw = document.querySelector('[data-archive="' + CSS.escape(a) + '"]'); if (sw) sw.focus(); // the head was redrawn
+      R.setLeaves(bucket(a), e.target.value); placed(); if (view() !== 'board') render(); toast(bucket(a).name + ': ' + leavesWords(e.target.value).toLowerCase() + (/^d|read/.test(e.target.value) ? '. Labelboard checks every hour once you apply.' : ''));
+      var sw = document.querySelector('[data-leaves="' + CSS.escape(a) + '"]'); if (sw) sw.focus(); // the head was redrawn
     }
   });
   var qTimer; // a redraw is ~150 ms on a 1,200-thread inbox: wait for the typing to pause
@@ -1252,7 +1265,7 @@
   var SET = window.LabelboardSettings({
     S: S, R: R, API: API, $: $, h: h, fmt: fmt, plural: plural, PALETTE: R.PALETTE, textOn: textOn, bandOf: bandOf, labelChip: labelChip,
     bucket: bucket, rebuild: rebuild, render: render, renderBoard: renderBoard, renderRack: renderRack, save: save, load: load, toast: toast, said: said,
-    unsave: function () { clearTimeout(saveTimer); }, ui: ui, applyUi: applyUi, openUndo: openUndo,
+    unsave: function () { clearTimeout(saveTimer); }, ui: ui, applyUi: applyUi, openUndo: openUndo, leavesSelect: leavesSelect, leavesWords: leavesWords,
   });
   var TRIAGE = window.LabelboardTriage({
     S: S, R: R, $: $, h: h, fmt: fmt, plural: plural, KIND: KIND, bucket: bucket, bandOf: bandOf, bySize: bySize, inboxIn: inboxIn, whoChip: whoChip,
@@ -1265,9 +1278,11 @@
     trace: trace, showView: showView, colStatus: colStatus, fsText: fsText, labelChip: labelChip, nameChip: nameChip, FUNNEL: FUNNEL,
     threadUrl: function (id, archived) { return 'https://mail.google.com/mail/u/?authuser=' + encodeURIComponent(S.snapshot.account) + '#' + (archived ? 'all' : 'inbox') + '/' + id; },
   });
-  var LABELS = window.LabelboardLabelsView({
-    S: S, API: API, $: $, h: h, fmt: fmt, plural: plural, hex: hex, textOn: textOn, bucket: bucket, labelChip: labelChip, view: view,
-    labelState: function () { return labelState(); }, rebuild: rebuild, render: render, save: save, toast: toast,
+  var GMAIL = window.LabelboardGmailView({
+    S: S, API: API, $: $, h: h, fmt: fmt, plural: plural, hex: hex, textOn: textOn, bucket: bucket, bandOf: bandOf, labelChip: labelChip, nameChip: nameChip, view: view,
+    labelState: function () { return labelState(); }, rebuild: rebuild, render: render, save: save, toast: toast, placed: placed,
+    trace: trace, colStatus: colStatus, fsText: fsText, leavesSelect: leavesSelect, leavesWords: leavesWords, cardEdit: cardEdit,
+    tip: VIEWS.tip, resetTips: VIEWS.resetTips, hideTip: VIEWS.hideTip, dayRows: VIEWS.dayRows, colorOf: VIEWS.colorOf,
   });
   var HOME = window.LabelboardHome({
     S: S, $: $, h: h, fmt: fmt, plural: plural, bucket: bucket, bandOf: bandOf, ui: ui, rackBar: rackBar, colInfo: colInfo, showColumn: showColumn, openReview: openReview, labelState: function () { return labelState(); },

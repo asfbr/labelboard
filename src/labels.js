@@ -1,6 +1,6 @@
 // Labelboard labels — pure JS, no DOM: what each Gmail label is to the board (a column's, the board's, left over from
 // an earlier layout, or yours), the colours Apply sets, clearing left-over labels, and handing a label of yours over.
-// The rules stay in rules.js; this sorts Gmail's labels against them. Used by the board (Labels view, Review) and Node tests.
+// The rules stay in rules.js; this sorts Gmail's labels against them. Used by the board (the Gmail tab, Review) and Node tests.
 var LabelboardLabels = (function (R) {
   'use strict';
   var SYSTEM = /^(INBOX|UNREAD|IMPORTANT|STARRED|SENT|DRAFT|TRASH|SPAM|CHAT|CATEGORY_\w+)$/;
@@ -83,6 +83,29 @@ var LabelboardLabels = (function (R) {
     });
   }
 
+  // Labels of yours that look like one the board gives (the same name, case, accents and a leading _ aside, or the one
+  // board label named by its last part): [{ name, into }], shallowest first. A label under one of yours that has a twin
+  // goes with it (foldTarget), so it isn't listed; neither is one already handed over, or a twin above or below it.
+  function twins(rows, lay) {
+    var board = Object.keys(set(rows.filter(function (r) { return r.kind === 'column' || r.kind === 'board'; }).map(function (r) { return r.name; }).concat(Object.keys(lay || {})))), out = [];
+    rows.filter(function (r) { return r.kind === 'yours' && !r.hand; }).sort(function (a, b) { return a.name.split('/').length - b.name.split('/').length || a.name.localeCompare(b.name); }).forEach(function (r) {
+      if (out.some(function (t) { return under(r.name, t.name); })) return;
+      var into = match(r.name, board.filter(function (n) { return !under(n, r.name) && !under(r.name, n); }));
+      if (into) out.push({ name: r.name, into: into });
+    });
+    return out;
+  }
+  // Where a label of yours can merge: every label but itself, those under it, and left-over labels (they move away in the
+  // same Apply), or a label being merged elsewhere. Columns' labels first, then the board's, then yours, each by name.
+  function mergeTargets(name, rows, lay) {
+    var seen = Object.create(null), out = [];
+    var add = function (n, kind) { if (seen[n] || under(n, name)) return; seen[n] = true; out.push({ name: n, kind: kind }); };
+    var rank = { column: 0, board: 1, yours: 2 };
+    rows.filter(function (r) { return r.kind !== 'leftover' && !(r.hand && r.hand.into) && rank[r.kind] != null; }).forEach(function (r) { add(r.name, r.kind); });
+    Object.keys(lay || {}).forEach(function (n) { add(n, 'board'); });
+    return out.sort(function (a, b) { return rank[a.kind] - rank[b.kind] || a.name.localeCompare(b.name); });
+  }
+
   // What Apply does about labels besides the board's own plan.labels: colours to fix on labels already in Gmail, moves
   // (the mail onto another label, then the old label deleted; to: null deletes it only if empty), labels of yours the board
   // takes as they are (adoptLabels), the names you handed over (the server moves or adopts only those, and its own),
@@ -155,7 +178,7 @@ var LabelboardLabels = (function (R) {
     return { backgroundColor: best, textColor: light ? '#000000' : '#ffffff' };
   }
 
-  return { SYSTEM: SYSTEM, layout: layout, norm: norm, match: match, foldTarget: foldTarget, classify: classify, housekeeping: housekeeping,
+  return { SYSTEM: SYSTEM, layout: layout, norm: norm, match: match, foldTarget: foldTarget, classify: classify, housekeeping: housekeeping, twins: twins, mergeTargets: mergeTargets,
     deltaE: deltaE, lookalikes: lookalikes, freeColor: freeColor, under: under, parents: parents };
 })(typeof LabelboardRules !== 'undefined' ? LabelboardRules : require('./rules.js'));
 if (typeof module !== 'undefined') module.exports = LabelboardLabels;

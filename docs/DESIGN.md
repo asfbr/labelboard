@@ -130,8 +130,7 @@ it into a 48px rail (name set vertically, count under it) that still takes drops
 ## Numbers
 Everything counts the inbox; archived mail (the 30-day window) is only ever a suffix: "172 in your
 inbox +99 archived". A card whose mail is all archived shows that count muted, with "all archived".
-Flow is the one exception: its bands include archived mail (that is what it shows), and its column
-labels split it out the same way. "Answered" has one definition everywhere: the last message in the
+The Gmail tab is the one exception: its bands include archived mail (that is what it shows). "Answered" has one definition everywhere: the last message in the
 thread is yours (`insights.js waitsSince`), counted over threads from people.
 
 ## Triage
@@ -151,7 +150,7 @@ same thing as the next step. Settings → Look picks the look (`config.ui.home`)
   after it, waiting changes come first, then replies, then new senders in Unsorted. Beside it the
   rest of what waits, a number each; under it the *Since …* line and a row of doors, one per view
   with a small picture drawn from its own numbers.
-- **Gallery.** The next step as one line, then a tile per view (3 × 2): its picture at 90px on
+- **Gallery.** The next step as one line, then a tile per view (4 in a row): its picture at 90px on
   `--raised`, its number at 32/800.
 - **Labels.** Now → after Apply at 60/800, the next step as one line, then each column as the tag card
   at poster size (32px band, 8px hole), biggest first; a tag opens the board at that column.
@@ -159,7 +158,8 @@ same thing as the next step. Settings → Look picks the look (`config.ui.home`)
   with new mail, answered by you, went to a column, new senders in Unsorted. No newer read, no line.
 
 ## Views
-Tabs (a pill row like the menu's picks) in the toolbar switch between Home, the board and five views;
+Tabs (a pill row like the menu's picks) in the toolbar switch between Home, the board and three views
+(Gmail, Inbox, Priorities);
 the pick is kept in `config.ui.view`. Off the board, the rack stays slim (hidden on Home), the search
 dims what doesn't match, and the *Show* pick and the drag hint hide.
 - **The pane under the board** (board only, `views.js pane`). A `--surface` panel with a grip on top.
@@ -172,16 +172,22 @@ dims what doesn't match, and the *Show* pick and the drag hint hide.
 - Colour is the column's Gmail label colour, nothing else: rack slices, flow bands, bubbles and squares
   all say "this column". Single-series charts (months, ages) use `--accent`; age steps are opacity on
   the accent (1, .7, .45, .25). Hatched means "skips the inbox", as in the rack.
-- Text stays in `--ink`/`--muted`, never the series colour. Flow labels on the board background get a
+- Text stays in `--ink`/`--muted`, never the series colour. Sankey labels on the board background get a
   `--board` halo so bands can pass under them.
 - One tooltip (`#tip`, ink on surface text) for every view; keyboard focus shows it too. Anything that
   stands for a card is a button that opens its drawer.
-- *Filters* answers "how did this label get here". Its Sankey runs how (left) → label → in or out of
-  the inbox; the how-bars are neutral, never a column colour: `--ink` Labelboard's filters, `--muted`
-  yours, 40% ink at Apply, `--hatch` by hand, hollow ink came before the filter, dashed hollow
-  `--accent` once you apply. Bands from the last two are faint. Below, a row per column and per filter
-  of yours with its days as bars in the same code (column colour for the solid ones), the older mail as
-  one share bar on the left, and a dotted line on the day Labelboard made the filter, when known.
+- **Gmail** answers "what does Gmail do with my mail". Two columns of `--surface` rows, filters left (a
+  column's: its dot, name, status, *Leaves the inbox* menu, *Show N cards* with each card's own menu; yours:
+  the query in mono; *No filter* dashed), labels right (a column's chip and its tree on demand, your trees with
+  their menu, drag handle and lookalike line), a 5px bar in the series colour on the inner edge of each. Between
+  them, filled ribbons in the filter's colour: 42% opacity labelled now, 24% once you apply, 7% came before the
+  filter, a `--surface` hatch over any that leaves the inbox. Hovering a row lights its ribbons. Above: chips
+  in numbers, the lookalikes bar (accent edge, *Merge it* / *Merge all*), the drag confirm in the same bar.
+  Below, *Day by day*: a row per column and per filter of yours, its days as bars (solid column colour by a
+  filter, 40% at Apply, `--hatch` by hand, hollow came before the filter, dashed `--accent` once you apply),
+  the older mail as one share bar, a dotted line on the day Labelboard made the filter.
+- **Inbox**: *Who writes* (bubbles by column, top writers, months), *Every thread* and *By age* (a square per
+  thread), one segmented pick.
 - Avatars are initials on the column colour. No logos yet (they would send sender domains to a favicon
   service; see the roadmap).
 

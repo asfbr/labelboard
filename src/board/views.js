@@ -1,10 +1,9 @@
-/* Labelboard views beside the board: Flow, Filters, Overview, All threads, Priorities, and the pane under the board
+/* Labelboard views beside the board: Inbox, Priorities, the Gmail tab's day strips, and the pane under the board
    (before → after, a flow you drop cards in). Numbers from insights.js, drawn as plain SVG/HTML. They never change Gmail. */
 window.LabelboardViews = function (ctx) {
   'use strict';
   var S = ctx.S, I = window.LabelboardInsights, R = window.LabelboardRules, $ = ctx.$, h = ctx.h, fmt = ctx.fmt, plural = ctx.plural;
-  var NAMES = { home: 'Home', board: 'Board', flow: 'Flow', filters: 'Filters', overview: 'Overview', threads: 'All threads', priorities: 'Priorities', labels: 'Labels' };
-  var OUT = { labelled: 'Stays in the inbox, labelled', stays: 'Stays in the inbox, no label', skip: 'Skips the inbox', out: 'Archived already' };
+  var NAMES = { home: 'Home', board: 'Board', gmail: 'Gmail', inbox: 'Inbox', priorities: 'Priorities' };
   var tips = {}, tipSeq = 0; // tooltip HTML by id, rebuilt on every render
   var colorOf = function (id) { var b = ctx.bucket(id); return ctx.bandOf(b) || (b && b.id !== 'unsorted' ? 'var(--muted)' : 'var(--hatch)'); }; // as the rack
   var nameOf = function (id) { var b = ctx.bucket(id); return b ? b.name : id; };
@@ -22,59 +21,23 @@ window.LabelboardViews = function (ctx) {
     }).join('') + '</div>';
   }
 
+  function resetTips() { tips = {}; tipSeq = 0; hideTip(); }
   function render(view) {
-    tips = {}; tipSeq = 0; hideTip();
+    resetTips();
     var el = $('view'), w = Math.max(320, el.clientWidth - 40);
-    el.innerHTML = view === 'flow' ? flowHtml(w, Math.max(380, el.clientHeight - 150)) : view === 'filters' ? filtersHtml(w, Math.max(300, el.clientHeight - 260)) : view === 'overview' ? overviewHtml(w)
-      : view === 'threads' ? threadsHtml() : view === 'priorities' ? prioritiesHtml() : '';
+    el.innerHTML = view === 'inbox' ? inboxHtml(w) : view === 'priorities' ? prioritiesHtml() : '';
     if (view === 'priorities') wirePriorities();
   }
-
-  // ---------- Flow ----------
-  function flowHtml(W, H) {
-    W = Math.max(W, 760);
-    var f = I.flow(S.mail, S.built, S.config, { max: 28, yours: S.filters }), win = S.snapshot.window;
-    if (!f.total) return head('Flow', 'Nothing in your inbox to show.');
-    var L = I.flowLayout(f, { width: W, height: H, minH: 12, gap: 5, labelWidth: Math.min(260, W * 0.24) }), N = L.nodes, nw = L.nodeWidth;
-    var info = {}; f.sources.concat(f.labels, f.outcomes, f.yours).forEach(function (n) { info[n.id] = n; });
-    var fill = function (id) {
-      if (id.indexOf('col:') === 0) return colorOf(id.slice(4));
-      if (id.indexOf('out:') === 0) return { 'out:labelled': 'var(--accent)', 'out:stays': 'var(--hatch)', 'out:skip': 'var(--muted)', 'out:out': 'url(#fl-out)' }[id];
-      return info[id].yours ? 'var(--muted)' : colorOf(info[id].bucket);
-    };
-    function label(id) { var n = info[id]; return id.indexOf('col:') === 0 ? nameOf(id.slice(4)) : id.indexOf('out:') === 0 ? OUT[id.slice(4)] : n.title; }
-    var drawn = sankey(L, {
-      fill: fill, linkClass: function (l) { return l.yours ? ' yours' : ''; },
-      linkColor: function (l) { return l.yours ? 'var(--muted)' : fill(l.to.indexOf('col:') === 0 ? l.to : l.from); },
-      linkTip: function (l) { return l.yours ? 'Your Gmail filter also labels ' + plural(l.n, 'thread') + ' here' : plural(l.n, 'thread') + ': ' + h(label(l.from)) + ' → ' + h(label(l.to)); },
-      node: function (id, n) {
-        var x = info[id], cy = n.y + n.h / 2, isSrc = n.layer === 0, isCol = id.indexOf('col:') === 0, name = label(id);
-        return { name: name, n: x.n, dim: isSrc && !x.more && !hit(name), open: x.key ? ' data-card="' + h(x.key) + '"' : x.yours ? ' data-filter="' + h(x.filter) + '"' : '',
-          tip: '<b>' + h(name) + '</b><br>' + plural(x.n, 'thread') + (isSrc && !x.yours ? ' → ' + h(nameOf(x.bucket)) : '') +
-            (x.more ? '<br>Each has a few threads. Open the column on the board to see them.' : '') +
-            (x.yours ? '<br>Your Gmail filter' + (x.label ? ', adds ' + h(x.label) : '') : '') +
-            (isCol ? '<br>' + h(x.bucket && x.bucket.label ? 'Label ' + x.bucket.label + (x.bucket.archive ? ', skips the inbox' : '') : 'No label') : '') +
-            (id === 'out:out' ? '<br>Out of your inbox already, archived by you or by one of your own filters. The board\'s rules would keep new mail like it in the inbox.' : '') +
-            (id === 'out:skip' && f.archived ? '<br>Mail already archived counts here too.' : '') +
-            (isSrc && (x.key || x.yours) ? '<br><i>Click to open</i>' : ''),
-          text: isSrc ? '<text x="' + (n.x - 8) + '" y="' + cy + '" text-anchor="end">' + h(short(name, x.yours ? 34 : 30)) + ' <tspan class="n">' + fmt(x.n) + '</tspan></text>'
-            : '<text x="' + (n.x + nw + 8) + '" y="' + cy + '" class="' + (isCol ? 'halo' : '') + '">' + h(name) + ' <tspan class="n">' + fmt(x.n - (x.archived || 0)) + (x.archived ? ' +' + fmt(x.archived) + ' archived' : '') + '</tspan></text>' };
-      },
-    }), links = drawn.links, nodes = drawn.nodes;
-    var heads = '<text class="lh" x="' + (N[f.sources[0].id].x + nw) + '" y="-14" text-anchor="end">Rules (cards)</text>' +
-      '<text class="lh" x="' + N[f.labels[0].id].x + '" y="-14">Labels (columns)</text><text class="lh" x="' + N[f.outcomes[0].id].x + '" y="-14">Where it lands</text>' +
-      (L.yoursTop != null ? '<text class="lh" x="' + (N[f.yours[0].id].x + nw) + '" y="' + (L.yoursTop - 12) + '" text-anchor="end">Your Gmail filters</text>' : '');
-    var scope = f.archived ? 'your inbox plus ' + plural(f.archived, 'thread') + ' archived in the last ' + (win && win.days || 30) + ' days, by you or by a filter' : 'your inbox';
-    return head('Flow', 'Where mail goes: each rule on the board (left) gives its threads a label (middle), and the label decides whether they stay in the inbox (right). ' +
-      'Band width is the number of threads: ' + scope + '. Dashed lines are your own Gmail filters, which Gmail runs too. ' +
-      '<button type="button" class="linkish" data-goto="filters">How did the labels already in Gmail get there?</button>' +
-      (f.archived || !win || !win.off ? '' : ' Mail you archived isn\'t shown: reading the last 30 days is off (Priorities turns it back on).')) +
-      '<div class="v-scroll"><svg class="flow" width="' + W + '" height="' + (L.height + 30) + '" viewBox="0 -30 ' + W + ' ' + (L.height + 30) + '" role="img" aria-label="' +
-      h(fmt(f.total) + ' threads flowing from ' + f.sources.length + ' rules to ' + f.labels.length + ' columns') + '">' + PATTERN +
-      '<g class="links">' + links + '</g>' + heads + nodes + '</svg></div>';
+  // ---------- Inbox: who writes (bubbles), or every thread by column or by age ----------
+  var INBOX = [['who', 'Who writes'], ['column', 'Every thread'], ['age', 'By age']];
+  function inboxHtml(W) {
+    var mode = ctx.ui().inbox || 'who';
+    var pick = '<div class="seg-pick" role="radiogroup" aria-label="Show">' + INBOX.map(function (m) { return '<button type="button" role="radio" data-inbox="' + m[0] + '" aria-checked="' + (mode === m[0]) + '">' + m[1] + '</button>'; }).join('') + '</div>';
+    return mode === 'who' ? overviewHtml(W, pick) : threadsHtml(mode, pick);
   }
+
   var PATTERN = '<defs><pattern id="fl-out" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--hatch)"/><rect width="3" height="6" fill="var(--muted)"/></pattern></defs>';
-  // The bands and bars of a three-layer Sankey (insights.js flowLayout), for Flow and Filters. o: fill(id),
+  // The bands and bars of a layered Sankey (insights.js flowLayout), for the pane under the board. o: fill(id),
   // linkColor(l), linkTip(l), linkClass(l)?, node(id, n) → { name, n, tip, text, open (attributes), dim?, stroke? }
   function sankey(L, o) {
     var N = L.nodes, nw = L.nodeWidth;
@@ -91,60 +54,19 @@ window.LabelboardViews = function (ctx) {
     return { links: links, nodes: nodes };
   }
 
-  // ---------- Filters: how each label got onto the mail, and what a filter would have caught before it existed ----------
-  var HOW = { 'how:ours': 'Labelboard\'s filters', 'how:yours': 'Your Gmail filters', 'how:early': 'Labelled when the filter was made',
-    'how:hand': 'By hand: no filter matches', 'how:missed': 'Came before the filter', 'how:would': 'Caught once you apply' };
-  var HOW_TIP = {
-    'how:ours': 'Labelled, and one of Labelboard\'s filters in Gmail matches: Gmail labels mail like this as it arrives.',
-    'how:yours': 'Labelled, and a filter of yours in Gmail matches: Gmail labels mail like this as it arrives.',
-    'how:early': 'Labelled, but it arrived before Labelboard made the filter: Apply labelled it.',
-    'how:hand': 'Labelled, but no filter matches: you (or something else) added the label.',
-    'how:missed': 'A filter in Gmail matches but the label isn\'t there: the mail came before the filter (Gmail filters act on new mail only), or the label was taken off.',
-    'how:would': 'No label yet: a filter Labelboard makes on Apply matches it. Apply also labels what is in your inbox; archived mail stays as it is.' };
-  var HOW_FILL = { 'how:ours': 'var(--ink)', 'how:yours': 'var(--muted)', 'how:early': 'color-mix(in srgb, var(--ink) 40%, transparent)', 'how:hand': 'var(--hatch)', 'how:missed': 'var(--board)', 'how:would': 'var(--board)' };
-  var SHORT = { filter: 'by a filter', early: 'at Apply', hand: 'by hand', missed: 'came before the filter', would: 'once you apply' };
-  function filtersHtml(W, H) {
-    W = Math.max(W, 760);
-    var tr = ctx.trace(), f = I.filterFlow(tr.t, S.mail, S.config, { max: 8 }), win = S.snapshot.window;
-    var lead = 'How the labels on your mail got there. Gmail doesn\'t record who added a label, so Labelboard checks which filters match each thread: ' +
-      'a label a filter matches came from that filter; one no filter matches was added by hand; a filter that matches mail without its label came after that mail.';
-    if (!f.total) return head('Filters', 'No label on the board and none of your Gmail filters touch the mail Labelboard read.');
-    var n = {}; f.sources.forEach(function (s) { n[s.id] = s.n; });
-    var L = I.flowLayout(f, { width: W, height: Math.min(H, 420), minH: 12, gap: 6, labelWidth: Math.min(260, W * 0.26) }), N = L.nodes, nw = L.nodeWidth;
-    var info = {}; f.sources.concat(f.labels, f.outcomes).forEach(function (x) { info[x.id] = x; });
-    var label = function (id) { return HOW[id] || (id === 'out:in' ? 'In your inbox' : id === 'out:out' ? 'Out of your inbox' : info[id].bucket ? info[id].bucket.name : info[id].name); };
-    var fill = function (id) { return HOW_FILL[id] || (id === 'out:in' ? 'var(--muted)' : id === 'out:out' ? 'url(#fl-out)' : info[id].bucket ? colorOf(info[id].bucket.id) : 'var(--hatch)'); };
-    var drawn = sankey(L, {
-      fill: fill, linkClass: function (l) { return l.from === 'how:missed' || l.from === 'how:would' ? ' faint' : ''; },
-      linkColor: function (l) { return fill(l.to.indexOf('out:') === 0 ? l.from : l.to); },
-      linkTip: function (l) { return plural(l.n, 'thread') + ': ' + h(label(l.from)) + ' → ' + h(label(l.to)); },
-      node: function (id, nd) {
-        var x = info[id], cy = nd.y + nd.h / 2, src = nd.layer === 0, col = x.bucket && x.bucket.label ? x.bucket : null, name = label(id);
-        return { name: name, n: x.n, open: col ? ' data-ours="' + h(col.id) + '"' : '', stroke: id === 'how:missed' ? 'var(--ink)' : id === 'how:would' ? 'var(--accent)' : null, dash: id === 'how:would',
-          tip: '<b>' + h(name) + '</b><br>' + plural(x.n, 'thread') + (HOW_TIP[id] ? '<br>' + h(HOW_TIP[id]) : '') + (col ? '<br>Label ' + h(col.label) + '<br><i>Click to see its filters</i>' : '') +
-            (id === 'lab:' ? '<br>Labels of yours with fewer threads, folded together' : x.bucket || src || id.indexOf('out:') === 0 ? '' : '<br>A label of yours that a Gmail filter adds'),
-          text: src ? '<text x="' + (nd.x - 8) + '" y="' + cy + '" text-anchor="end">' + h(name) + ' <tspan class="n">' + fmt(x.n) + '</tspan></text>'
-            : '<text x="' + (nd.x + nw + 8) + '" y="' + cy + '"' + (nd.layer === 1 ? ' class="halo"' : '') + '>' + h(short(name, 28)) + ' <tspan class="n">' + fmt(x.n) + '</tspan></text>' };
-      },
-    });
-    var heads = '<text class="lh" x="' + (N[f.sources[0].id].x + nw) + '" y="-14" text-anchor="end">How it got the label</text>' +
-      '<text class="lh" x="' + N[f.labels[0].id].x + '" y="-14">Label</text><text class="lh" x="' + N[f.outcomes[0].id].x + '" y="-14">Where it is now</text>';
-    var scope = S.recent && win && !win.off ? 'your inbox plus the last ' + (win.days || 30) + ' days of archived mail' : 'your inbox';
-    return head('Filters', lead + ' Counted over ' + scope + '; a thread with two labels counts under each.') +
-      kpis([{ n: fmt((n['how:ours'] || 0) + (n['how:yours'] || 0)), l: 'labelled by a filter' }].concat(n['how:early'] ? [{ n: fmt(n['how:early']), l: 'labelled at Apply' }] : [],
-        [{ n: fmt(n['how:hand'] || 0), l: 'labelled by hand' }, { n: fmt(n['how:missed'] || 0), l: 'came before the filter, no label' }, { n: fmt(n['how:would'] || 0), l: 'caught once you apply', accent: true }])) +
-      '<div class="v-scroll"><svg class="flow" width="' + W + '" height="' + (L.height + 30) + '" viewBox="0 -30 ' + W + ' ' + (L.height + 30) + '" role="img" aria-label="' +
-      h(fmt(f.total) + ' labels on ' + fmt(f.threads) + ' threads, by how they got there') + '">' + PATTERN + '<g class="links">' + drawn.links + '</g>' + heads + drawn.nodes + '</svg></div>' +
-      rowsHtml(I.filterRows(tr.t, tr.filters, S.config, Date.parse(S.snapshot.generatedAt), win && win.days || 30), tr, win && win.days || 30);
-  }
-  // Filter by filter: each thread on the day its last message arrived, so a filter's start shows where the
+  // Day by day, on the Gmail tab: each thread on the day its last message arrived, so a filter's start shows where the
   // hollow marks (mail it didn't label) give way to solid ones. Labelboard's filters by column, then yours.
+  var SHORT = { filter: 'by a filter', early: 'at Apply', hand: 'by hand', missed: 'came before the filter', would: 'once you apply' };
+  function dayRows() {
+    var tr = ctx.trace(), win = S.snapshot.window, days = win && win.days || 30;
+    return rowsHtml(I.filterRows(tr.t, tr.filters, S.config, Date.parse(S.snapshot.generatedAt), days), tr, days);
+  }
   function rowsHtml(rows, tr, days) {
     var at = {}; tr.filters.forEach(function (f) { var b = f.live && f.ours && f.at && R.bucketOfLabel(f.label, S.config); if (b) at[b.id] = Math.min(at[b.id] || Infinity, f.at); });
     var now = Date.parse(S.snapshot.generatedAt), live = rows.yours.filter(function (r) { return r.n.all; });
     var blind = rows.yours.filter(function (r) { return !r.preview; }).length, none = rows.yours.length - live.length - blind;
     var key = function (k, t) { return '<span class="fk fk-' + k + '">' + h(t) + '</span>'; };
-    return '<h3 class="v-h">Filter by filter</h3><p class="v-note">Each mark is a thread, on the day its last message came in; the left block is everything older than ' + days + ' days. ' +
+    return '<h3 class="v-h">Day by day</h3><p class="v-note">Each mark is a thread, on the day its last message came in; the left block is everything older than ' + days + ' days. ' +
       'Where hollow marks give way to solid ones is roughly when a filter started.</p>' +
       '<div class="fk-row">' + key('filter', 'Labelled, a filter matches') + key('early', 'Labelled at Apply') + key('hand', 'Labelled by hand') + key('missed', 'Came before the filter: no label') + key('would', 'Caught once you apply') + '</div>' +
       '<div class="frs">' + (rows.columns.length ? '<h4 class="frs-h">Labelboard\'s, by column</h4>' + rows.columns.map(function (r) {
@@ -281,12 +203,12 @@ window.LabelboardViews = function (ctx) {
     window.addEventListener('resize', function () { if ((ctx.ui().pane || {}).open && document.body.dataset.view === 'board') pane(); });
   }
 
-  // ---------- Overview ----------
-  function overviewHtml(W) {
+  // ---------- Inbox: who writes ----------
+  function overviewHtml(W, pick) {
     var o = I.overview(S.snapshot, S.built, S.config, Date.now(), { perColumn: 14, top: 10 });
-    if (!o.inbox) return head('Overview', 'Nothing in your inbox to show.');
+    if (!o.inbox) return head('Inbox', 'Nothing in your inbox to show.') + pick;
     var size = Math.max(300, Math.min(W > 900 ? W * 0.52 : W, 620));
-    return head('Overview', 'Who fills your inbox. Each bubble is a card (a company, a sender, a subject rule), sized by its inbox threads and grouped by column.') +
+    return head('Inbox', 'Who fills your inbox. Each bubble is a card (a company, a sender, a subject rule), sized by its inbox threads and grouped by column.') + '<div class="tb-tools">' + pick + '</div>' +
       kpis([{ n: fmt(o.inbox), l: 'inbox threads' }, { n: pct(o.people, o.inbox), l: 'from people (' + fmt(o.people) + ')', accent: true },
         { n: fmt(o.machine), l: 'automated' }, { n: pct(o.answered, o.people), l: 'of threads from people are answered' }, { n: fmt(o.starred), l: 'starred' }, { n: o.oldestDays + ' days', l: 'oldest thread' }]) +
       '<div class="ov-grid"><div class="ov-pack">' + packSvg(o, size) + '</div><div class="ov-side">' +
@@ -342,10 +264,10 @@ window.LabelboardViews = function (ctx) {
       '<p class="note">Only mail still in your inbox: what you archived isn\'t counted.</p>';
   }
 
-  // ---------- All threads ----------
-  function threadsHtml() {
-    var g = I.grid(S.snapshot, S.built, S.config), mode = ctx.ui().cells === 'age' ? 'age' : 'column', now = Date.now();
-    if (!g.length) return head('All threads', 'Nothing in your inbox to show.');
+  // ---------- Inbox: every thread ----------
+  function threadsHtml(mode, pick) {
+    var g = I.grid(S.snapshot, S.built, S.config), now = Date.now();
+    if (!g.length) return head('Inbox', 'Nothing in your inbox to show.') + pick;
     var ageOf = function (t) { var d = (now - Date.parse(t.date)) / 864e5; return d <= 7 ? 0 : d <= 30 ? 1 : d <= 90 ? 2 : 3; };
     var AGES = ['This week', 'This month', '1–3 months', 'Older'];
     var blocks = g.map(function (c) {
@@ -367,10 +289,8 @@ window.LabelboardViews = function (ctx) {
     }).join('');
     var key = mode === 'age' ? AGES.map(function (a, i) { return '<span><i class="cell a' + i + '"></i>' + a + '</span>'; }).join('')
       : '<span><i class="cell" style="--c:var(--muted)"></i>Stays in the inbox</span><span><i class="cell leaves" style="--c:var(--muted)"></i>Skips the inbox after sorting</span>';
-    return head('All threads', 'Every inbox thread is one square, grouped by column and card. Hover a square to see the thread; click it to open its card.') +
-      '<div class="tb-tools"><div class="seg-pick" role="radiogroup" aria-label="Color squares by">' +
-      ['column', 'age'].map(function (m) { return '<button type="button" role="radio" data-cells="' + m + '" aria-checked="' + (mode === m) + '">' + (m === 'age' ? 'By age' : 'By column') + '</button>'; }).join('') +
-      '</div><div class="tb-key">' + key + '</div></div><div class="tblocks' + (mode === 'age' ? ' by-age' : '') + '">' + blocks + '</div>';
+    return head('Inbox', 'Every inbox thread is one square, grouped by column and card' + (mode === 'age' ? ', coloured by age' : '') + '. Hover a square to see the thread; click it to open its card.') +
+      '<div class="tb-tools">' + pick + '<div class="tb-key">' + key + '</div></div><div class="tblocks' + (mode === 'age' ? ' by-age' : '') + '">' + blocks + '</div>';
   }
 
   // ---------- Priorities ----------
@@ -485,12 +405,12 @@ window.LabelboardViews = function (ctx) {
       var f = e.target.closest('[data-filter]'); if (f) { hideTip(); return ctx.openFilter(f.dataset.filter); }
       var o = e.target.closest('[data-ours]'); if (o) { hideTip(); return ctx.openOurs(o.dataset.ours); }
       var g = e.target.closest('[data-goto]'); if (g) { hideTip(); return ctx.showView(g.dataset.goto); }
-      var m = e.target.closest('[data-cells]'); if (m) { ctx.ui().cells = m.dataset.cells; ctx.save(); render('threads'); }
+      var m = e.target.closest('[data-inbox]'); if (m) { ctx.ui().inbox = m.dataset.inbox; ctx.save(); render('inbox'); }
     });
     v.addEventListener('keydown', function (e) {
       if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role="button"][data-card], [role="button"][data-filter], [role="button"][data-ours]')) { e.preventDefault(); e.target.click(); }
     });
   }
   wirePane(); wire($('view')); wire($('pane'));
-  return { render: render, pane: pane, NAMES: NAMES, hideTip: hideTip };
+  return { render: render, pane: pane, NAMES: NAMES, hideTip: hideTip, resetTips: resetTips, tip: tip, dayRows: dayRows, colorOf: colorOf };
 };

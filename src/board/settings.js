@@ -7,7 +7,7 @@ window.LabelboardSettings = function (B) {
   var SETUP = ['preset', 'patterns', 'processes', 'newsletterDomains', 'buckets']; // what a preset decides
   var GROUPS = [['Sorting', [['columns', 'Columns'], ['topics', 'Topics'], ['processes', 'Processes'], ['subjects', 'Subject rules'], ['groups', 'Group addresses']]],
     ['You', [['you', 'Your addresses'], ['labels', 'Your labels']]],
-    ['More', [['look', 'Look'], ['tuning', 'Fine-tuning'], ['ai', 'Ask an AI'], ['files', 'Import and export'], ['orphans', 'Columns that are gone']]]];
+    ['More', [['auto', 'Runs on its own'], ['look', 'Look'], ['tuning', 'Fine-tuning'], ['ai', 'Ask an AI'], ['files', 'Import and export'], ['orphans', 'Columns that are gone']]]];
   var SECTIONS = [].concat.apply([], GROUPS.map(function (g) { return g[1]; }));
   var COUNT = { topics: 'topics', processes: 'processes', subjects: 'patterns', groups: 'aliases' }; // nav counts, from these config lists
   var ONE = { topics: 'topic', processes: 'process', subjects: 'subject rule' };
@@ -64,7 +64,7 @@ window.LabelboardSettings = function (B) {
   function columnsHtml() {
     return '<p class="note">Each column with a label becomes a Gmail label and its filters. Reorder here, or drag a column by its heading on the board.</p><ol class="st-list">' +
       S.config.buckets.map(function (b, i, all) {
-        var flags = [b.label ? (b.archive ? 'Skips the inbox' : 'Label only') : 'No label, no filter', b.label && b.read && 'marks read', b.subLabels && 'sub-labels', b.topics && 'topics', b.automated && 'machine mail'].filter(Boolean).join(' · ');
+        var flags = [b.label ? B.leavesWords(R.leavesOf(b)) : 'No label, no filter', b.label && b.read && 'marks read', b.subLabels && 'sub-labels', b.topics && 'topics', b.automated && 'machine mail'].filter(Boolean).join(' · ');
         var tools = '<button type="button" class="btn ghost icon" data-act="col-up" aria-label="Move ' + h(b.name) + ' left"' + (i ? '' : ' disabled') + '>' + ICON.up + '</button>' +
           '<button type="button" class="btn ghost icon" data-act="col-down" aria-label="Move ' + h(b.name) + ' right"' + (i < all.length - 1 ? '' : ' disabled') + '>' + ICON.down + '</button>';
         return row('data-col="' + h(b.id) + '"', 'col-open', openCol === b.id, B.bandOf(b) || 'var(--hatch)', b.name, b.label, flags, tools, function () { return colEdit(b); });
@@ -78,7 +78,9 @@ window.LabelboardSettings = function (B) {
         '<div class="field">Label color<div class="palette" role="group" aria-label="Label color">' + B.PALETTE.map(function (c) {
           return '<button type="button" data-act="color" data-color="' + c + '" style="background:' + c + '" aria-label="' + c + '" aria-pressed="' + (c === B.bandOf(b)) + '"></button>';
         }).join('') + '</div></div>' +
-        sw('archive', 'Skip the inbox: mail here leaves the inbox, labelled') + sw('read', 'Mark as read: mail here arrives read') +
+        '<label class="field">When mail here leaves the inbox' + B.leavesSelect(at('col', null, 'leaves'), R.leavesOf(b)) + '</label>' +
+        '<p class="note">Right away is Gmail\'s own skip-inbox filter. A later time is Labelboard\'s hourly check, which archives only mail its filter labelled, and leaves a thread alone while it has a newer or unread message.</p>' +
+        sw('read', 'Mark as read: mail here arrives read') +
         '<p class="note">A card can do otherwise, and star, flag or delete its mail too: open the card.</p>' + sw('subLabels', 'A sub-label per card (a client, a project)') +
         sw('topics', 'Contacts filed here are what mail is about (a client, a project), not someone helping with it') +
         sw('newTopics', 'An AI read may start new topics here') +
@@ -171,7 +173,7 @@ window.LabelboardSettings = function (B) {
     Object.keys(map).forEach(function (k) { if (!(k in counts)) counts[k] = 0; });
     var rows = Object.keys(counts).sort(function (x, z) { return counts[z] - counts[x] || x.localeCompare(z); });
     return '<p class="note">Mail you already labelled helps place cards: a card whose threads mostly carry a label goes to that label\'s column. Each column\'s own label counts by itself; pick a column for the others. ' +
-      'To fold one of these labels into a column, or hand it to the board, open the Labels view.</p>' +
+      'To fold one of these labels into a column, or hand it to the board, open the Gmail tab.</p>' +
       (rows.length ? '<table class="plan-table"><thead><tr><th>Label</th><th>Inbox threads</th><th>Counts toward</th></tr></thead><tbody>' + rows.map(function (l) {
         return '<tr><td>' + h(l) + (own[l] ? ' <span class="note">(a column\'s label)</span>' : '') + '</td><td class="n">' + fmt(counts[l]) + '</td><td>' +
           columnSelect('data-labelmap="' + h(l) + '" aria-label="Column for ' + h(l) + '"', map[l] || '', 'Nothing') + '</td></tr>';
@@ -195,6 +197,18 @@ window.LabelboardSettings = function (B) {
   }
   // The AI brief: one file for whichever AI you pick, and its answer pasted back (a review, as importFile takes it).
   function aiBrief() { return R.reviewBrief(S.mail, S.built, S.config, false); }
+  // What runs while you're away: Gmail's filters, archiving later, and, if you switch them on, reading and applying.
+  function autoHtml() {
+    var a = S.config.auto || {}, g = S.gmail || {}, later = (g.later && g.later.rules || []).length, log = g.auto, ago = function (t) { var m = Math.round((Date.now() - t) / 60000); return m < 90 ? plural(Math.max(1, m), 'minute') + ' ago' : m < 2880 ? plural(Math.round(m / 60), 'hour') + ' ago' : plural(Math.round(m / 1440), 'day') + ' ago'; };
+    var sw = function (k, label, off) { return '<label class="st-check"><input type="checkbox" ' + at('auto', null, k) + (a[k] ? ' checked' : '') + (off ? ' disabled' : '') + '><span>' + label + '</span></label>'; };
+    var last = !log ? '' : log.error ? 'The last run ' + ago(log.at) + ' stopped: ' + log.error : 'Last run ' + ago(log.at) + ': ' + (log.read === 'unfinished' ? 'the read didn\'t finish in time; the next one starts over' : 'read ' + plural(log.read && log.read.fetched || 0, 'new or changed thread')) +
+      (!log.apply ? '' : log.apply.applied ? '; applied ' + log.apply.applied : log.apply.nothing ? '; nothing new to apply' : log.apply.waits === 'settings' ? '; nothing applied: you have changes to review first' : log.apply.waits === 'time' ? '; nothing applied: no time left in that hour, the next read tries again' : '; nothing applied: the last Apply stopped, finish it in Review') + '.';
+    return '<p class="note">Always, board open or not: Gmail runs your filters on new mail' + (later ? ', and Labelboard checks your inbox every hour for mail that leaves it later (' + plural(later, 'column or card', 'columns and cards') + ')' : '') + '.</p>' +
+      sw('read', 'Read what changed every 6 hours: the same metadata as <i>Read mail again</i>, never bodies, and nothing changes in Gmail. Never a first read.') +
+      sw('apply', 'Then apply what the rules placed on their own: filters for new senders a rule put in a column, and labels on new inbox mail. Only when nothing of yours waits for Review (your settings are the ones you last applied). It never moves or takes off a label and never touches yours; each run is an Apply you can undo in Review.', !a.read) +
+      (last ? '<p class="note">' + h(last) + '</p>' : '') +
+      (S.mode === 'apps-script' ? '' : '<p class="note">This runs only in your Apps Script, not in this preview.</p>');
+  }
   function aiHtml() {
     var b = aiBrief(), n = b.cards.reduce(function (m, c) { return m + c.threads; }, 0);
     return '<h3 class="rv-h">1. Download the brief</h3><p class="note">Labelboard never sends your mail anywhere. This makes one file you paste into ' +
@@ -236,7 +250,7 @@ window.LabelboardSettings = function (B) {
     var b = S.config.buckets.filter(function (x) { return [x.name, x.label || ''].some(function (s) { return s.toLowerCase().replace(/[^a-z0-9]/g, '') === n; }); })[0];
     return b ? b.id : 'unsorted';
   }
-  var DRAW = { columns: columnsHtml, you: youHtml, groups: groupsHtml, subjects: subjectsHtml, topics: topicsHtml, processes: processesHtml, tuning: tuningHtml, look: lookHtml, labels: labelsHtml, ai: aiHtml, files: filesHtml, orphans: orphansHtml };
+  var DRAW = { columns: columnsHtml, you: youHtml, groups: groupsHtml, subjects: subjectsHtml, topics: topicsHtml, processes: processesHtml, tuning: tuningHtml, look: lookHtml, auto: autoHtml, labels: labelsHtml, ai: aiHtml, files: filesHtml, orphans: orphansHtml };
 
   // ---------- drawing: keeps focus and scroll across a redraw, so Tab still lands on the next field ----------
   function keyOf(el) {
@@ -302,6 +316,7 @@ window.LabelboardSettings = function (B) {
     col: function (el, f) {
       var b = bucketOf(el), v = el.value.trim();
       if (el.type === 'checkbox') { b[f] = el.checked; return changed(); }
+      if (f === 'leaves') { R.setLeaves(b, el.value); return changed(); }
       if (f === 'label') {
         if (!v) return draw();
         var other = S.config.buckets.filter(function (x) { return x !== b && x.label === v; })[0];
@@ -309,6 +324,10 @@ window.LabelboardSettings = function (B) {
       }
       if (f === 'description') b.description = v; else if (v) b[f] = v;
       changed();
+    },
+    auto: function (el, f) {
+      var a = S.config.auto = S.config.auto || {}; a[f] = el.checked; if (!a.read) a.apply = false;
+      changed(f === 'read' ? (el.checked ? 'Labelboard reads what changed every 6 hours.' : 'Reading on its own is off.') : el.checked ? 'After a read on its own, Labelboard applies what the rules placed.' : 'Applying on its own is off.');
     },
     you: function (el, f) { S.config[f] = lower(parse(el.value, true)); changed(); },
     tuning: function (el, f) { S.config[f] = f === 'subjectStopNames' ? parse(el.value) : lower(parse(el.value, true)); changed(); },

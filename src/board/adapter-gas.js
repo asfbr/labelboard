@@ -27,7 +27,7 @@ window.LabelboardAPI = (function () {
       return step(null);
     },
     windowOff: function () { return call('windowOff'); },
-    // { label name: {threads, messages} } for your labels, for the Labels view
+    // { label name: {threads, messages} } for your labels, for the Gmail tab
     counts: function () { return call('labelCounts').then(JSON.parse); },
     apply: function (plan, onProgress) {
       var json = JSON.stringify(plan);

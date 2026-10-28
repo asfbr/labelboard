@@ -29,7 +29,7 @@ function gmail() {
   const labelInfo = file ? file.map((l) => ({ name: l.name, color: l.color || null, type: 'user' })) : undefined;
   return { filters, gone: [], labels, ownedLabels, adoptedLabels: (file || []).filter((l) => l.adopted).map((l) => l.name), labelInfo };
 }
-// Counts per label for the Labels view: labels.json's own, else what the snapshot and the window hold.
+// Counts per label for the Gmail tab: labels.json's own, else what the snapshot and the window hold.
 function labelCounts() {
   const file = labelFile() || [], mail = json('snapshot.json').threads.concat(has('recent.json') ? json('recent.json').threads : []), out = {};
   file.forEach((l) => {

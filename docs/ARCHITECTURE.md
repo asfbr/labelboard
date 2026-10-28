@@ -1,7 +1,8 @@
 # Architecture notes
 
 ## Sync model (as built, Oct 2026, session 2)
-Nothing syncs on its own: there are no triggers or background jobs (why: `CLAUDE-PROSE.md`).
+Nothing syncs on its own unless you ask: one hourly trigger exists only while a column or card archives
+later or Settings → *Runs on its own* is on (below: On its own; why it was off before: `CLAUDE-PROSE.md`).
 - **Board = a snapshot** of the inbox plus the 30-day window (below), read on demand (metadata only).
   *Read mail again* is incremental: it lists
   the inbox (`threads.list`, INBOX, 500 per page) and reads Gmail's change log since the last read
@@ -15,7 +16,7 @@ Nothing syncs on its own: there are no triggers or background jobs (why: `CLAUDE
   inbox drop out. The header keeps how the last read went (`snapshot.read`); Review warns after an hour.
 - **Your Gmail labels** feed card suggestions ("you labeled 80% as X"). A column's own label counts by
   itself; *Your labels* maps the others (`config.labelMap`, by top-level label; null switches one off).
-  The *Labels* view shows all of them and lets you hand one over (below: Labels).
+  The *Gmail* tab shows all of them and lets you merge or hand one over (below: Labels).
 - **Filter status on the board.** `rules.js planFilters` (the plan's filters without the inbox backfill,
   ~10 ms) and `LabelboardSync.filterStatus` run on every move: each column head, card drawer and the
   Review button's count say whether a label's filters are live in Gmail, made, changed or removed on
@@ -160,9 +161,10 @@ Unlike gmailctl, filters Labelboard did not create are never deleted.
   `innerHTML`. Sortable, the only outside script, loads with an integrity hash.
 - Settings files are outside input too (shared, imported): column colours reach `style`/`fill` raw, so
   `bandOf()` passes only `#rrggbb`.
-- `script.scriptapp` exists for one installable trigger, `runLater`, made by Apply while a card archives
-  later and deleted when none does (or on *Remove everything*). It runs as you, hourly, and only takes
-  inbox threads matching a card's own search out of the inbox.
+- `script.scriptapp` exists for one installable trigger, `runLater`, kept while a column or card archives
+  later or *Runs on its own* is switched on, deleted when neither is. It runs as you, hourly: it takes inbox
+  threads matching a card's or column's own search out of the inbox, and, if you switched it on, reads what
+  changed and applies what the rules placed (above: On its own).
 - The manifest lists its scopes, so the server can't make outside requests (`UrlFetchApp` needs a scope
   it doesn't ask for). The repo holds no script id (`.clasp.json`), build (`dist/`) or mail data.
 - `dev/serve.mjs` listens on 127.0.0.1, refuses a foreign Host header and non-JSON POSTs.
@@ -173,7 +175,28 @@ Unlike gmailctl, filters Labelboard did not create are never deleted.
 - Not yet checked live: subject phrase matching with punctuation (`[Dealflow]`, `Accepted:`), and the
   longest filter query Gmail accepts. Queries are kept under ~900 characters.
 
+## On its own: reading and applying while you're away (Oct 2026)
+- Two switches in `config.auto`, off by default: `read` (what changed, every 6 hours) and `apply` (then apply
+  what the rules placed). `runLater`, the hourly trigger's handler, archives first, then `runAuto_` reads
+  if the last read is 6 hours old, by looping `scanInbox` slices with `{auto: true}` (the snapshot's `read.auto`
+  makes the header say "on its own"). Never a first read; a read that doesn't finish in 4 minutes is dropped.
+- It applies only when the last Apply finished and sent the same settings (`rules.js settingsKey`, recorded on
+  each entry; `ui`, `release` and `restoreFilters` left out): the only news is then what the rules placed.
+  `rules.js autoPlan` is Review's plan with nothing only you start (no unlabel, moves, hand-overs, adopts,
+  recolours); `Rules.js` ships to Apps Script for it. An empty diff writes no record entry. The entry is
+  marked `auto` and undone like any other.
+- Yours first: while one runs (cache key `auto`, 10 min) a read, Apply or undo from the board refuses
+  with a plain message; it skips an hour while yours runs (`scan` or `apply.m` in the cache, or an undo).
+  A user lock keeps two runs apart. `autoLog` keeps the last run for Settings.
+- The trigger exists while `timed` rules exist or `auto.read` is on: `setLater_` at Apply and `saveConfig`
+  when the switch flips (property `autoRead`) call `syncTrigger_`. No new scope.
+
 ## What a card does: actions, conditions, archiving later (Oct 2026)
+- When mail leaves the inbox is one answer per column (`b.archive`: right away, Gmail's own; `b.later`: after
+  N days or once read, Labelboard's hourly check), and a card follows it unless it sets its own
+  (`rules.js leavesOf`/`cardLeaves`; a card's "stays" is `act.archive: false` plus `later: {off: true}`).
+  Cards that follow their column share one timed rule (`col:<id>`, its cards' terms chunked), so a
+  column's archiving is one search an hour, not one per card. The rules live in the chunked blob `timed`.
 - A column sets skip inbox and mark as read; a card overrides either way and adds star, important and
   delete (`rules.js cardDoes`). A card whose actions equal its column's shares the column's OR-filter, so
   boards with nothing set keep their filters byte for byte. Any other card gets its own filter: Gmail
@@ -199,10 +222,18 @@ Unlike gmailctl, filters Labelboard did not create are never deleted.
   newest still shows under the label in Gmail, so counts agree for practical purposes.
 - Backfill does not trust the emulation: the server runs Gmail's own search for each label.
 
-## Views (Flow, Filters, Overview, All threads, Priorities), Oct 2026
+## Views (Gmail, Inbox, Priorities), Oct 2026
+- Five tabs since 28 Oct 2026: Home, Board, Gmail (was Flow, Filters, Labels), Inbox (was Overview, All
+  threads), Priorities. A saved `config.ui.view` from before maps to its new tab (`app.js MERGED`).
 - Read-only views over the same snapshot and config as the board. Only Priorities' reply numbers need
   more: the 30-day window (below).
-  `src/insights.js` (pure, Node-tested) computes them; `src/board/views.js` draws them as plain SVG/HTML.
+  `src/insights.js` (pure, Node-tested) computes them; `src/board/views.js` draws Inbox and Priorities as
+  plain SVG/HTML, `src/board/gmail-view.js` the Gmail tab.
+- **The Gmail tab** (`insights.js gmailFlow`): every label a thread has, or a filter would give it, comes
+  from one source, a column's filters, a filter of yours (or one handed over outside the columns), or none
+  (by hand), to a column's labels or a tree outside the columns. Each link counts a thread once, by state:
+  labelled now, once you apply, or came before the filter. Rows are HTML (menus live in them), so the bands
+  are drawn after the page lays them out, from their measured positions (`rowLayout` with `at`).
 - Every number starts from `R.threadPlace` per inbox thread, the function `stats()` (the rack) uses, so a
   view and the rack never disagree on where a thread goes.
 - "From a person" = not a machine sender (`R.isMachine`), not a group address (`config.aliases`), not in
@@ -210,7 +241,7 @@ Unlike gmailctl, filters Labelboard did not create are never deleted.
   record's `msgs` timeline: `[epoch s, 1 if SENT]` per message, drafts left out). Records read before
   timelines existed fall back to "no SENT label in the thread".
 
-## The 30-day window: mail outside the inbox (board, Flow, reply numbers), Oct 2026
+## The 30-day window: mail outside the inbox (board, Gmail tab, reply numbers), Oct 2026
 - An inbox-only read hid what skips the inbox: mail your own filters archive never showed on the board
   or in Flow, and a column set to skip the inbox emptied itself after Apply. So every read also covers
   the last 30 days of mail outside the inbox. On by default (was opt-in from Priorities until 16 Oct
@@ -223,9 +254,9 @@ Unlike gmailctl, filters Labelboard did not create are never deleted.
 - `splitWindow` puts back apart what the inbox listing returned (the snapshot, unchanged) and the rest
   (blob `recent`, no snippets). The board builds its cards over both (`S.mail`), leaving out window
   threads only you wrote in. Everything that counts or writes still takes the inbox alone, by the INBOX
-  label: the rack (`stats`), backfill and re-sort (`buildPlan`), Overview, All threads, Priorities.
-  Flow and the filters lane take both: archived threads land in Flow's *Archived already* (or *Skips
-  the inbox* when their column skips it), and your filters count what they took out of the inbox.
+  label: the rack (`stats`), backfill and re-sort (`buildPlan`), Inbox, Priorities.
+  The Gmail tab and the filters lane take both: archived threads flow from their filter to their label,
+  and your filters count what they took out of the inbox.
 - A card now grows from archived mail too, so Apply can write filters for senders seen only there
   (often already handled by a filter of yours: the card says so), and a process card's `must` terms can
   pick up signals from archived threads. With no window the cards and plan are unchanged (checked on
@@ -256,8 +287,9 @@ Unlike gmailctl, filters Labelboard did not create are never deleted.
 
 ## Deploy bundle
 `dist/` must ship `Code.js`, `Sync.js` (pure helpers, also inlined into the board), `board.html`,
-`appsscript.json`, `Baked.js` and `Presets.js`: the last two
-define the globals `BAKED_CONFIG` and `PRESETS` that `Code.js` reads (a missing one = blank first open).
+`appsscript.json`, `Baked.js`, `Presets.js` and `Rules.js` (a copy of `src/rules.js`, for applying on its own):
+`Baked.js` and `Presets.js` define the globals `BAKED_CONFIG` and `PRESETS` that `Code.js` reads (a missing one
+= blank first open).
 
 ## Storage (Apps Script)
 - Config, contacts and snapshot: gzip + base64, chunked into user properties (500 KB total).

@@ -1,6 +1,6 @@
 {
   "name": "labelboard",
-  "version": "0.0.27",
+  "version": "0.0.28",
   "private": true,
   "license": "MIT",
   "description": "Sort a Gmail inbox by intention on a drag-and-drop board, then turn the board into Gmail labels and filters. Runs as your own Apps Script.",

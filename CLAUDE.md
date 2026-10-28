@@ -7,11 +7,11 @@ and voice for UI strings: `docs/BRAND.md`. Formerly mailboard (renamed Oct 2026)
 ## Layout
 - `src/rules.js` — the rule engine, the **only** place rules live. Pure ES5-style JS, no DOM, no Apps
   Script APIs: it runs in Node tests, the board and the server.
-- `src/insights.js` — pure numbers and layouts for the views (flow, packing, priorities), Node-tested.
+- `src/insights.js` — pure numbers and layouts for the views (the Gmail tab's flow, packing, priorities), Node-tested.
 - `src/labels.js` — pure: Gmail's labels against the board (the board's, left over, yours), colours,
-  hand-over and leftover moves, lookalike colours. Node-tested; the Labels tab is `board/labels-view.js`.
+  hand-over, merges and leftover moves, lookalike colours. Node-tested; the Gmail tab is `board/gmail-view.js`.
 - `src/board/` — the board UI (`index.html`, `style.css`, `app.js`, `settings.js` for Settings, first
-  run, import/export, `views.js` for Flow, Overview, All threads, Priorities, `triage.js` for one card at a
+  run, import/export, `views.js` for Inbox, Priorities and the pane, `triage.js` for one card at a
   time, `home.js` for Home). Talks to a backend only through
   `window.LabelboardAPI` (`adapter-gas.js` for Apps Script, `adapter-dev.js` for the local preview).
 - `src/server/` — Apps Script (`Code.js`, `appsscript.json`): scan, storage, apply. `Sync.js` holds its
@@ -49,7 +49,7 @@ and voice for UI strings: `docs/BRAND.md`. Formerly mailboard (renamed Oct 2026)
   (attachment yes/no), never bodies. Don't widen
   scopes or reads without flagging it; it is a core promise in the README.
 - Never touch filters the tool didn't create or wasn't handed by an explicit adopt (`readOwned_` in `Code.js`).
-  Same for labels: only `ownedLabels`, or one named in the plan's `handover` (picked in the Labels tab).
+  Same for labels: only `ownedLabels`, or one named in the plan's `handover` (picked on the Gmail tab).
 - Web app stays `executeAs: USER_ACCESSING` + `access: MYSELF`; mail fields reach `innerHTML` only through
   `h()`; outside scripts carry an integrity hash. Why: `docs/ARCHITECTURE.md` → Security.
 - Code style: `var`, function expressions, dense one-liners, short comments, as in the existing files.

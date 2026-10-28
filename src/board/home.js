@@ -4,7 +4,7 @@ window.LabelboardHome = function (ctx) {
   'use strict';
   var S = ctx.S, I = window.LabelboardInsights, $ = ctx.$, h = ctx.h, fmt = ctx.fmt, plural = ctx.plural;
   var STEPS = [['read', 'Read'], ['sort', 'Sort'], ['apply', 'Apply'], ['answer', 'Answer']];
-  var VIEWS = [['board', 'Board'], ['flow', 'Flow'], ['filters', 'Filters'], ['overview', 'Overview'], ['threads', 'All threads'], ['priorities', 'Priorities'], ['labels', 'Labels']];
+  var VIEWS = [['board', 'Board'], ['gmail', 'Gmail'], ['inbox', 'Inbox'], ['priorities', 'Priorities']];
   var colorOf = function (b) { return ctx.bandOf(b) || (b.id === 'unsorted' ? 'var(--hatch)' : 'var(--muted)'); };
   var one = function (n, a, b) { return n === 1 ? a : b; };
 
@@ -77,14 +77,14 @@ window.LabelboardHome = function (ctx) {
   }
 
   // ---------- small pictures of each view, drawn from the same numbers (viewBox W×H, scaled by CSS) ----------
-  // bars stretch to the box; Overview's bubbles keep their shape
-  function svg(v, W, H, d) { return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="' + (v === 'overview' ? 'xMinYMax meet' : 'none') + '" aria-hidden="true">' + PIC[v](d, W, H) + '</svg>'; }
+  // bars stretch to the box; Inbox's bubbles keep their shape
+  function svg(v, W, H, d) { return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="' + (v === 'inbox' ? 'xMinYMax meet' : 'none') + '" aria-hidden="true">' + PIC[v](d, W, H) + '</svg>'; }
   var PIC = {
     board: function (d, W, H) { // columns of cards
       var cols = d.cols.slice(0, 8), cw = W / cols.length, rh = Math.max(4, H / 9), cap = Math.floor(H / (rh * 1.5));
       return cols.map(function (c, i) { var out = ''; for (var k = 0; k < Math.min(cap, c.cards); k++) out += '<rect x="' + (i * cw + 2) + '" y="' + (k * rh * 1.5) + '" width="' + (cw - 4) + '" height="' + rh + '" rx="1.5" fill="' + colorOf(c.b) + '"/>'; return out; }).join('');
     },
-    flow: function (d, W, H) { // columns on the left, in the inbox or not on the right
+    gmail: function (d, W, H) { // columns on the left, in the inbox or not on the right
       var tot = d.cols.reduce(function (s, c) { return s + c.after; }, 0) || 1, k = H / tot, y = 0, stay = 0, skip = d.cols.reduce(function (s, c) { return s + c.leaves; }, 0), ys = 0, yk = (tot - skip) * k, out = '';
       d.cols.forEach(function (c) {
         var a = (c.after - c.leaves) * k, b = c.leaves * k, col = colorOf(c.b);
@@ -93,27 +93,9 @@ window.LabelboardHome = function (ctx) {
       });
       return out + '<rect x="' + (W - 5) + '" y="0" width="5" height="' + Math.max(1, stay * k - 1) + '" fill="var(--accent)"/><rect x="' + (W - 5) + '" y="' + stay * k + '" width="5" height="' + skip * k + '" fill="var(--muted)"/>';
     },
-    filters: function (d, W, H) { // Labelboard's, yours, made on Apply
-      var f = d.filters || { all: 0, ours: 0, make: 0 }, max = Math.max(1, f.ours, f.all - f.ours, f.make), bh = H / 4.2, row = function (i, n, st) { return '<rect x="0" y="' + (i * bh * 1.4) + '" width="' + Math.max(3, W * n / max) + '" height="' + bh + '" rx="2" ' + st + '/>'; };
-      return row(0, f.ours, 'fill="var(--ink)"') + row(1, f.all - f.ours, 'fill="var(--muted)"') + row(2, f.make, 'fill="none" stroke="var(--accent)" stroke-dasharray="3 2" vector-effect="non-scaling-stroke"');
-    },
-    overview: function (d, W, H) { // the biggest cards as bubbles
+    inbox: function (d, W, H) { // the biggest cards as bubbles
       var top = d.people.top.slice(0, 6), r0 = H / 2, max = top.length ? top[0].n : 1, x = 0;
       return top.map(function (c) { var r = Math.max(3, r0 * Math.sqrt(c.n / max)), b = ctx.bucket(c.bucket), out = '<circle cx="' + (x + r) + '" cy="' + (H - r) + '" r="' + (r - 0.5) + '" fill="' + (b ? colorOf(b) : 'var(--hatch)') + '"/>'; x += 2 * r + 3; return x - 3 > W ? '' : out; }).join('');
-    },
-    threads: function (d, W, H) { // a square per thread, coloured by column
-      var s = H / 6, n = Math.floor(W / (s + 1)) * 6, tot = d.cols.reduce(function (t, c) { return t + c.after; }, 0) || 1, out = '', i = 0;
-      d.cols.forEach(function (c) { var m = Math.round(n * c.after / tot), lv = Math.round(n * c.leaves / tot); for (var k = 0; k < m && i < n; k++, i++) out += '<rect x="' + Math.floor(i / 6) * (s + 1) + '" y="' + (i % 6) * (s + 1) + '" width="' + (s - 0.5) + '" height="' + (s - 0.5) + '" rx="1" fill="' + colorOf(c.b) + '"' + (k >= m - lv ? ' opacity=".45"' : '') + '/>'; });
-      return out;
-    },
-    labels: function (d, W, H) { // a column's tag over its sub-labels in the lighter shade
-      var cols = d.cols.filter(function (c) { return c.b.label && c.b.color; }).slice(0, 4), cw = W / Math.max(1, cols.length), rh = H / 4.6;
-      return cols.map(function (c, i) {
-        var x = i * cw, bg = colorOf(c.b), sh = window.LabelboardRules.shadeOf(c.b.color), lt = sh ? sh.backgroundColor : 'var(--hatch)';
-        return '<rect x="' + x + '" y="0" width="' + (cw - 6) + '" height="' + rh + '" rx="2" fill="' + bg + '"/>' + [1, 2, 3].map(function (k) {
-          return '<rect x="' + (x + 6) + '" y="' + (k * rh * 1.2) + '" width="' + (cw - 12 - k * 4) + '" height="' + rh + '" rx="2" fill="' + lt + '"/>';
-        }).join('');
-      }).join('');
     },
     priorities: function (d, W, H) { // how long they have waited
       var ag = d.pr.ages, A = [ag.week, ag.month, ag.quarter, ag.older], max = Math.max.apply(null, A.concat(1)), bh = H / 5;
@@ -123,19 +105,16 @@ window.LabelboardHome = function (ctx) {
   function band(x0, y0, x1, y1, w, col) { var m = (x0 + x1) / 2; return '<path d="M' + x0 + ' ' + y0 + 'C' + m + ' ' + y0 + ' ' + m + ' ' + y1 + ' ' + x1 + ' ' + y1 + 'v' + w + 'C' + m + ' ' + (y1 + w) + ' ' + m + ' ' + (y0 + w) + ' ' + x0 + ' ' + (y0 + w) + 'Z" fill="' + col + '" opacity=".5"/>'; }
   // Each view's number: [big, what it counts, a short line for the tile's head]
   function said(v, d) {
-    var st = d.st, skip = d.cols.reduce(function (s, c) { return s + c.leaves; }, 0), out = S.mail.threads.length - S.snapshot.threads.length;
     return v === 'board' ? [fmt(d.cols.length), one(d.cols.length, 'column', 'columns') + ', ' + plural(S.built.cards.filter(function (c) { return c.threads.length; }).length, 'card'), d.tri.unsorted ? plural(d.tri.unsorted, 'card') + ' unsorted' : 'every card placed']
-      : v === 'flow' ? [fmt(skip), one(skip, 'thread skips', 'threads skip') + ' the inbox after Apply', 'where mail goes']
-      : v === 'filters' ? (d.filters ? [fmt(d.filters.all), one(d.filters.all, 'Gmail filter', 'Gmail filters') + ', ' + fmt(d.filters.ours) + ' of them Labelboard\'s' + (d.filters.make ? '; ' + fmt(d.filters.make) + ' made on Apply' : ''), 'how labels got there'] : ['–', 'Gmail\'s filters weren\'t read', 'how labels got there'])
-      : v === 'overview' ? [d.people.inbox ? Math.round(100 * d.people.people / d.people.inbox) + '%' : '–', 'of your inbox is from people', 'who fills your inbox']
-      : v === 'threads' ? [fmt(st.before.inbox), 'inbox threads' + (out ? ', +' + fmt(out) + ' archived' : ''), 'every thread, by card']
-      : v === 'labels' ? labelsSaid()
+      : v === 'gmail' ? gmailSaid(d)
+      : v === 'inbox' ? [d.people.inbox ? Math.round(100 * d.people.people / d.people.inbox) + '%' : '–', 'of your inbox is from people', 'who fills your inbox']
       : [fmt(d.pr.waiting.length), one(d.pr.waiting.length, 'thread waits', 'threads wait') + ' on your answer', d.pr.waiting.length ? hours(d) + ' to clear' : 'nothing waits on you'];
   }
-  function labelsSaid() {
-    var ls = ctx.labelState(); if (!ls) return ['–', 'Gmail\'s labels weren\'t read', 'colours and folders'];
-    var n = function (k) { return ls.rows.filter(function (r) { return r.kind === k; }).length; }, left = n('leftover');
-    return [fmt(ls.rows.length), one(ls.rows.length, 'label', 'labels') + ' in Gmail, ' + fmt(n('yours')) + ' of them yours', left ? plural(left, 'label') + ' left over' : 'colours and folders'];
+  function gmailSaid(d) {
+    var f = d.filters, ls = ctx.labelState(); if (!f) return ['–', 'Gmail\'s filters weren\'t read', 'filters and labels'];
+    var left = ls ? ls.rows.filter(function (r) { return r.kind === 'leftover'; }).length : 0;
+    return [fmt(f.all), one(f.all, 'Gmail filter', 'Gmail filters') + ', ' + fmt(f.ours) + ' of them Labelboard\'s' + (ls ? '; ' + plural(ls.rows.length, 'label') : '') + (f.make ? '; ' + fmt(f.make) + ' made on Apply' : ''),
+      left ? plural(left, 'label') + ' left over' : 'filters and labels'];
   }
   function doors(d) {
     return '<nav class="hm-doors" aria-label="Views">' + VIEWS.map(function (v) {
@@ -163,7 +142,7 @@ window.LabelboardHome = function (ctx) {
     return '<div class="hm-tags-head"><p class="hm-big"><b>' + fmt(d.st.before.inbox) + '</b><span>to</span><b class="acc">' + fmt(d.st.after.inbox) + '</b></p>' +
       '<p class="hm-p">threads in your inbox, now and after you apply. Each tag is a column: open one to see its cards on the board.</p></div>' + nextLine(d) + sinceHtml(d) +
       '<div class="hm-tags">' + cols.map(function (c) {
-        var b = c.b, what = b.label ? (b.archive ? 'skip the inbox' : 'stay in the inbox') : b.id === 'unsorted' ? 'no rule yet' : 'stay as they are';
+        var b = c.b, what = b.label ? (b.archive ? 'skip the inbox' : b.later ? 'leave the inbox later' : 'stay in the inbox') : b.id === 'unsorted' ? 'no rule yet' : 'stay as they are';
         return '<button type="button" class="hm-tag' + (b.label ? '' : ' nolabel') + (b.label && b.archive ? ' leaves' : '') + '" data-col="' + h(b.id) + '" style="--band:' + colorOf(b) + ';flex-grow:' + Math.sqrt(c.inbox + 1).toFixed(2) + '">' +
           '<span class="hm-tag-name">' + h(b.name) + '</span><span class="hm-tag-lab">' + h(b.label || 'no label') + '</span>' +
           '<span class="hm-tag-row"><b>' + fmt(c.inbox) + '</b><span>' + h(what) + (c.change ? '<em>' + fmt(c.change) + ' to sort on Apply</em>' : '') + '</span></span></button>';

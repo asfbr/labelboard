@@ -109,3 +109,22 @@ test('columns that look alike are flagged, with a colour in a hue nobody uses', 
   const hue = (c) => R.paletteIndex(c) % 8;
   assert.ok(![hue('#16a766'), hue('#2a9c68'), hue('#ffad47'), hue('#fad165')].includes(hue(list[0].suggest.backgroundColor)));
 });
+
+test('labels of yours that look like the board\'s are found, and any label of yours merges into any label', () => {
+  const seeds = [{ match: 'domain', value: 'acme.com', bucket: 'portfolio', name: 'Acme', sublabel: 'Fund I/Acme Labs' }];
+  const snap = { threads: [T({ from: 'ceo@acme.com' })] }, b = R.buildCards(snap, config, seeds), plan = R.buildPlan(snap, b, config, seeds);
+  const lay = L.layout(b, config, plan), owned = ['_Portfolio', '_Portfolio/Fund I', '_Portfolio/Fund I/Acme Labs'];
+  const names = owned.concat(['Portfolio', 'Portfolio/Old notes', 'Acme', 'Receipts', 'Receipts/2025']);
+  let rows = L.classify(info(names), owned, lay, config);
+  // Portfolio is the column's label with its _ gone; Acme names the one board label it starts; the one under Portfolio goes with it
+  assert.deepEqual(L.twins(rows, lay), [{ name: 'Acme', into: '_Portfolio/Fund I/Acme Labs' }, { name: 'Portfolio', into: '_Portfolio' }]);
+  const into = L.mergeTargets('Receipts', rows, lay).map((t) => t.name);
+  assert.ok(into.includes('_Portfolio/Fund I/Acme Labs') && into.includes('Acme') && !into.includes('Receipts/2025') && !into.includes('Receipts'));
+  // merged into a leaf the board made: its mail moves there, the label under it lands under it, new
+  rows = L.classify(info(names), owned, lay, { ...config, handover: { Receipts: { into: '_Portfolio/Fund I/Acme Labs' } } });
+  const hk = L.housekeeping(rows, plan, { ...config, handover: { Receipts: { into: '_Portfolio/Fund I/Acme Labs' } } }, []);
+  assert.deepEqual(hk.moves, [{ from: 'Receipts/2025', to: '_Portfolio/Fund I/Acme Labs/2025' }, { from: 'Receipts', to: '_Portfolio/Fund I/Acme Labs' }]);
+  assert.deepEqual(hk.create.map((c) => c.name), ['_Portfolio/Fund I/Acme Labs/2025']);
+  assert.ok(!L.twins(rows, lay).some((t) => t.name === 'Receipts'), 'handed over already');
+  assert.ok(!L.mergeTargets('Acme', rows, lay).some((t) => t.name === 'Receipts'), 'not into a label that is moving away itself');
+});

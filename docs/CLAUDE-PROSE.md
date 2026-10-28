@@ -52,6 +52,13 @@ re-read in place). Reasons:
 Update 21 Oct 2026: a trigger now exists, but only for *Archive it later* (`runLater`). It never reads
 into the snapshot, and it exists only while a card asks for it. The reasons above still keep re-reads manual.
 
+Update 28 Oct 2026: reversed, as an opt-in (Settings → *Runs on its own*), asked for by the user. What changed:
+the trigger exists anyway for archiving later, so no new setup or scope; Home's *Since …* is the "what changed"
+view this note waited for; and Gmail's change log runs out after about a week unopened, after which a read is
+slower. A read every 6 hours is a few list calls plus the changed threads, well inside the trigger's daily time.
+Applying on its own goes further only when the settings are the ones last applied, so it never ships an edit
+you haven't reviewed; see `ARCHITECTURE.md` → On its own.
+
 ## Card actions: why a condition narrows the actions, not the card (Oct 2026)
 The request behind it: one company in a column should skip the inbox, but only the mail that came
 through the team address, not mail sent to you by name. Making the condition narrow the whole card

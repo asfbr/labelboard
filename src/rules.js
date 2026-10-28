@@ -649,7 +649,22 @@ var LabelboardRules = (function () {
       var v = act[k]; if (v === undefined || v === null) return;
       if (when && isOn(v)) (add = add || {})[k] = v; else base[k] = v;
     });
-    return { base: base, extra: add ? Object.assign({}, base, add) : null, when: add ? when : null, later: laterOf(own.later) };
+    var later = ownsLeave(own) ? laterOf(own.later) : b && b.label && !b.archive ? laterOf(b.later) : null; // the column's, unless the card says when it leaves
+    return { base: base, extra: add ? Object.assign({}, base, add) : null, when: add ? when : null, later: later };
+  }
+  // ---------- when mail leaves the inbox: one answer per column (b.archive, b.later), a card can give its own ----------
+  // Keys: 'never', 'now' (Gmail skips the inbox), 'd<N>' (N days after it arrives), 'read' (once read). A card's ''
+  // follows its column; its own answer is act.archive plus later ({off: true} when it doesn't archive later).
+  function ownsLeave(own) { return !!own && (own.later != null || (own.act && own.act.archive != null)); }
+  function laterKey(l) { return !l ? '' : l.read ? 'read' : 'd' + l.days; }
+  function laterFromKey(v) { return v === 'read' ? { read: true } : /^d\d+$/.test(v || '') ? laterOf({ days: Number(v.slice(1)) }) : null; }
+  function leavesOf(b) { return !b || !b.label ? '' : b.archive ? 'now' : laterKey(laterOf(b.later)) || 'never'; }
+  function setLeaves(b, v) { b.archive = v === 'now'; var l = v === 'now' ? null : laterFromKey(v); if (l) b.later = l; else delete b.later; }
+  function cardLeaves(own) { return !ownsLeave(own) ? '' : own.act && own.act.archive ? 'now' : laterKey(laterOf(own.later)) || 'never'; }
+  function setCardLeaves(own, v) {
+    own.act = own.act || {};
+    if (!v) { delete own.act.archive; delete own.later; } else { own.act.archive = v === 'now'; own.later = (v !== 'now' && laterFromKey(v)) || { off: true }; }
+    if (!Object.keys(own.act).length) delete own.act;
   }
   function actsSig(a, b) {
     var col = colActs(b);
@@ -689,15 +704,26 @@ var LabelboardRules = (function () {
     var d = Math.round(Number(l.days) || 0);
     return d > 0 ? { days: Math.min(d, 365) } : l.read ? { read: true } : null;
   }
-  // The timed rules for Apply to hand the server: one per card that has one, with the card's own Gmail searches
-  // (its filter's terms: a contact not placed yet has none, so it never archives mail it doesn't label).
+  // The timed rules for Apply to hand the server, with the cards' own Gmail searches (their filter's terms: a contact
+  // not placed yet has none, so it never archives mail it doesn't label). A card with its own timing, a condition or
+  // process signals gets its own rule (id: card key); cards that follow their column share one (id: 'col:<id>').
   function laterRules(built, config) {
-    var buckets = bucketById(config), out = [];
+    var buckets = bucketById(config), out = [], cols = {}, order = [];
     built.cards.forEach(function (c) {
       var p = placement(c, config), b = buckets[p.bucket], d = cardDoes(c, config, b), terms = b ? ruleTerms(c, p, b) : [];
       if (!d.later || !terms.length || b.id === 'unsorted') return;
-      var w = whenOf(((config.cards || {})[c.key] || {}).when), tail = (c.must && c.must.length ? ' (' + c.must.map(termQuery).join(' OR ') + ')' : '') + (w ? ' ' + whenQuery(w, config.me) : '');
+      var own = (config.cards || {})[c.key] || {}, w = whenOf(own.when), must = c.must && c.must.length;
+      if (!ownsLeave(own) && !w && !must) {
+        var g = cols[b.id]; if (!g) { g = cols[b.id] = { b: b, terms: [], seen: Object.create(null) }; order.push(b.id); }
+        terms.forEach(function (t) { var k = t.field + ':' + t.value; if (!g.seen[k]) { g.seen[k] = true; g.terms.push(t); } });
+        return;
+      }
+      var tail = (must ? ' (' + c.must.map(termQuery).join(' OR ') + ')' : '') + (w ? ' ' + whenQuery(w, config.me) : '');
       out.push(Object.assign({ id: c.key, title: c.title, queries: chunkQueries(terms, 500).map(function (q) { return '(' + q + ')' + tail; }) }, d.later));
+    });
+    order.forEach(function (id) {
+      var g = cols[id];
+      out.push(Object.assign({ id: 'col:' + id, title: g.b.name, queries: chunkQueries(g.terms, 500).map(function (q) { return '(' + q + ')'; }) }, laterOf(g.b.later)));
     });
     return out;
   }
@@ -717,6 +743,8 @@ var LabelboardRules = (function () {
     });
     if (best && most / n >= 0.6) return { text: ofThese(most, n) + ' came through ' + best + ' and you answered none. Skip the inbox when it comes that way?', act: { archive: true }, when: { via: best } };
     var machine = ts.filter(function (t) { return isMachine(t.from); }).length, unread = ts.filter(function (t) { return t.labels.indexOf('UNREAD') >= 0; }).length;
+    var col = bucketById(config)[placement(c, config).bucket];
+    if (col && (col.archive || laterOf(col.later))) return null; // its column already takes it out of the inbox
     if (machine / n >= 0.8 && unread / n >= 0.6) return { text: 'Sent by a machine, and you left ' + ofThese(unread, n) + ' unread. Archive it 3 days after it arrives?', later: { days: 3 } };
     return null;
   }
@@ -759,6 +787,38 @@ var LabelboardRules = (function () {
     });
     withParents(labels, config).sort(function (a, b) { return a.name.localeCompare(b.name); });
     return { labels: labels, filters: filters, backfill: backfill, unlabel: Object.keys(off).sort().map(function (l) { return off[l]; }), later: laterRules(built, config) };
+  }
+  // The mail cards are built from: the inbox, plus the window's threads someone else wrote in (recent: the window blob).
+  function mailOf(snapshot, recent) {
+    var out = recent ? recent.threads.filter(function (t) { return !t.msgs || t.msgs.some(function (m) { return !m[1]; }); }) : [];
+    return { threads: snapshot.threads.concat(out) };
+  }
+  // The backfill as Apply sends it: only what Gmail doesn't have yet. A thread that has the label and stays in the inbox is
+  // left alone; a mark-as-read entry keeps the unread ones (`unread`); `had`: threads of a skip-inbox or mark-read label that
+  // carry it already, so an undo leaves their label on. byId: thread id → record.
+  function trimBackfill(backfill, byId) {
+    return backfill.map(function (e) {
+      var has = function (id) { return byId[id].labels.indexOf(e.label) >= 0; };
+      var unread = e.read ? e.threadIds.filter(function (id) { return byId[id].labels.indexOf('UNREAD') >= 0; }) : [];
+      var o = Object.assign({}, e, { threadIds: e.threadIds.filter(function (id) { return e.archive || !has(id) || unread.indexOf(id) >= 0; }), had: e.archive || e.read ? e.threadIds.filter(has) : [] });
+      if (e.read) o.unread = unread;
+      return o;
+    }).filter(function (e) { return e.threadIds.length; });
+  }
+  // A short fingerprint of the settings an Apply sent: view picks (ui) and one-shot hand-backs and restores left out.
+  function settingsKey(config) {
+    var s = JSON.stringify(config, function (k, v) { return this === config && (k === 'ui' || k === 'release' || k === 'restoreFilters') ? undefined : v; }), x = 5381;
+    for (var i = 0; i < s.length; i++) x = (x * 33 + s.charCodeAt(i)) >>> 0;
+    return x.toString(36) + '.' + s.length;
+  }
+  // What Labelboard applies on its own after a read on its own (config.auto.apply), when the settings are the ones last
+  // applied: the plan Review would send, so the only news is what the rules placed (new senders' filters, labels on new
+  // inbox mail). Nothing that only you start: no label taken off a thread, moved, handed over or adopted.
+  function autoPlan(snapshot, recent, config, seeds, gmail) {
+    var mail = mailOf(snapshot, recent), byId = {}, plan = buildPlan(snapshot, buildCards(mail, config, seeds), config, seeds, gmail);
+    mail.threads.forEach(function (t) { byId[t.id] = t; });
+    return Object.assign(plan, { backfill: trimBackfill(plan.backfill, byId), unlabel: [], moves: [], handover: [], adoptLabels: [], recolor: [], adopt: [], release: [], restore: [],
+      settings: settingsKey(config), auto: true });
   }
   // What a card puts in its column's filter: nothing for unsorted / keep-in-inbox / unplaced context.
   // A counterparty's domain also sends its product mail (Microsoft 365): until you place the card,
@@ -1075,6 +1135,8 @@ var LabelboardRules = (function () {
     termMatches: termMatches, termQuery: termQuery, chunkQueries: chunkQueries,
     buildCards: buildCards, suggest: suggest, bucketForLabel: bucketForLabel,
     cardDoes: cardDoes, colActs: colActs, whenOf: whenOf, whenMatches: whenMatches, whenQuery: whenQuery, laterOf: laterOf, laterRules: laterRules, actionHint: actionHint,
+    leavesOf: leavesOf, setLeaves: setLeaves, cardLeaves: cardLeaves, setCardLeaves: setCardLeaves, laterKey: laterKey,
+    mailOf: mailOf, trimBackfill: trimBackfill, settingsKey: settingsKey, autoPlan: autoPlan,
     placement: placement, mergeReview: mergeReview, reviewBrief: reviewBrief, briefText: briefText, orphans: orphans, remapBuckets: remapBuckets, remapSeeds: remapSeeds, threadMove: threadMove, threadPlace: threadPlace, threadChange: threadChange, placeCtx: placeCtx, isMachine: isMachine, stats: stats, buildPlan: buildPlan, planFilters: planFilters, noFilterWhy: noFilterWhy, diffFilters: diffFilters, toGmailXml: toGmailXml,
   };
 })();

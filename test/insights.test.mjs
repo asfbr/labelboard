@@ -29,20 +29,6 @@ test('places: one per inbox thread, the same answer the rack counts', () => {
   assert.equal(ps.filter((p) => !p.leaves).length, st.after.inbox);
 });
 
-test('flow keeps every thread: rules, labels and outcomes all add up, archived mail included', () => {
-  const f = I.flow(snapshot, built, config, { max: 2 });
-  assert.equal(f.total, 9);
-  assert.equal(f.archived, 1);
-  [f.sources, f.labels, f.outcomes].forEach((layer) => assert.equal(total(layer), 9));
-  assert.deepEqual(f.outcomes.find((o) => o.id === 'out:out'), { id: 'out:out', n: 1 }, 'archived, and its column keeps mail in: already out');
-  const k = built.threadCards[snapshot.threads[8].id][0];
-  const skip = { ...config, cards: { [k]: { bucket: 'newsletters' } }, buckets: config.buckets.map((b) => b.id === 'newsletters' ? { ...b, archive: true } : b) };
-  assert.ok(!I.flow(snapshot, built, skip).outcomes.some((o) => o.id === 'out:out'), 'a column that skips the inbox takes it whether archived or not');
-  assert.ok(f.sources.some((s) => s.more), 'cards past max fold into a "more" node');
-  assert.ok(f.labels.every((l) => l.id.startsWith('col:')) && f.outcomes.every((o) => o.id.startsWith('out:')));
-  f.labels.forEach((l) => assert.equal(total(f.links.filter((k) => k.from === l.id)), l.n, 'what enters a column leaves it'));
-});
-
 test('shift: inbox now → cards → after Apply, every layer adds up, and only what Apply changes counts as changed', () => {
   const snap = { threads: [T({ from: 'noreply@tool.io', labels: ['INBOX', '_Tools'] }), T({ from: 'noreply@tool.io' }), T({ from: 'news@letters.com' }), T({ from: 'x@gone.com', labels: ['CATEGORY_UPDATES'] })] };
   const b = R.buildCards(snap, config, []), s = I.shift(snap, b, config, { max: 1 });
@@ -74,7 +60,7 @@ test('shift: when Apply changes nothing the two bars match, two column labels an
 });
 
 test('flowLayout: nodes in a layer never overlap, and every link has its ends', () => {
-  const f = I.flow(snapshot, built, config), L = I.flowLayout(f, { width: 900, height: 300, minH: 12, gap: 5 });
+  const f = I.shift(snapshot, built, config, {}), L = I.flowLayout(f, { width: 900, height: 300, minH: 12, gap: 5 });
   [0, 1, 2].forEach((layer) => {
     const ns = Object.values(L.nodes).filter((x) => x.layer === layer).sort((a, z) => a.y - z.y);
     ns.slice(1).forEach((x, i) => assert.ok(x.y >= ns[i].y + ns[i].h, 'no overlap in layer ' + layer));
@@ -187,11 +173,26 @@ test('filterTrace: a label by a filter, before it, by hand, missed, or once appl
   assert.equal(Object.keys(tr.nodes['col:clients']).length, 4, 'the first thread has two Clients labels and counts once');
   assert.equal(I.filterTrace({ threads: th }, [{ id: 'q', query: 'list:x', label: 'X', live: true }], config).byFilter.q.preview, false, 'a search metadata can\'t answer');
 
-  const f = I.filterFlow(tr, { threads: th }, config);
-  [f.sources, f.labels, f.outcomes].forEach((layer) => assert.equal(total(layer), f.total));
-  assert.equal(f.total, 7);
-  assert.deepEqual(f.sources.map((s) => s.id), ['how:ours', 'how:yours', 'how:early', 'how:hand', 'how:missed', 'how:would']);
-  assert.ok(I.flowLayout(f, { width: 900, height: 400 }).links.every((l) => l.y0 != null && l.y1 != null));
+  // the Gmail tab: each label from one source, each thread once per link, by its state
+  const g = I.gmailFlow({ t: tr, filters: filters.map((f) => ({ ...f, gid: f.id })) }, { threads: th }, config, ['Projects']);
+  const link = (from, to) => g.links.find((l) => l.from === from && l.to === to);
+  assert.deepEqual(['now', 'apply', 'missed'].map((k) => link('col:clients', 'col:clients')[k]), [2, 0, 1], 'the first thread has two Clients labels and counts once');
+  assert.equal(link('none', 'col:clients').now, 1, 'labelled by hand');
+  assert.equal(link('col:tools', 'col:tools').apply, 1, 'caught once you apply');
+  assert.equal(link('f:y1', 'tree:Receipts').now, 1);
+  assert.deepEqual([link('none', 'tree:Receipts').n, link('none', 'tree:Travel').n], [1, 1], 'a label your filter gives, added by hand; one nothing gives');
+  assert.deepEqual(g.left.map((x) => x.id), config.buckets.filter((b) => b.label).map((b) => 'col:' + b.id).concat(['f:y1', 'none']));
+  assert.ok(g.right.some((x) => x.id === 'tree:Projects' && x.n === 0), 'a label of yours with no mail still gets a row');
+  const lay = I.rowLayout(g, { minH: 50, gap: 8, extra: { 'col:clients': 100 } });
+  ['L:', 'R:'].forEach((s) => {
+    const side = Object.values(lay.nodes).filter((x) => x.side === (s === 'R:' ? 1 : 0)).sort((a, z) => a.y - z.y);
+    side.slice(1).forEach((x, i) => assert.ok(x.y >= side[i].y + side[i].h, 'rows never overlap'));
+  });
+  assert.ok(lay.nodes['L:col:clients'].h >= 150, 'an opened row grows by what it shows');
+  lay.links.forEach((l) => {
+    const a = lay.nodes['L:' + l.from], b = lay.nodes['R:' + l.to];
+    assert.ok(l.y0 >= a.y && l.y0 <= a.y + a.h && l.y1 >= b.y && l.y1 <= b.y + b.h, 'every band starts and ends in its rows');
+  });
 
   const rows = I.filterRows(tr, filters, config, NOW, 30);
   assert.deepEqual(rows.columns.map((r) => r.bucket.id), ['clients', 'tools']);

@@ -1,5 +1,5 @@
 // Labelboard insights — pure JS, no DOM: the numbers and layouts behind the board's other views
-// (Flow, Overview, All threads, Priorities). Inbox threads from the snapshot the board already holds; the
+// (Gmail, Inbox, Priorities, the pane under the board). Inbox threads from the snapshot the board already holds; the
 // reply numbers also take the 30-day window's archived threads.
 var LabelboardInsights = (function (R) {
   'use strict';
@@ -14,53 +14,7 @@ var LabelboardInsights = (function (R) {
     return threads.map(function (t) { var p = R.threadPlace(t, built, config, ctx); p.t = t; return p; });
   }
   function bucketsById(config) { var m = {}; config.buckets.forEach(function (b) { m[b.id] = b; }); return m; }
-  // out: archived already (by you or your own filter), though the board's rules would keep mail like it in
-  function outcomeOf(p) { return p.leaves ? 'skip' : p.t.labels.indexOf('INBOX') < 0 ? 'out' : p.labelled ? 'labelled' : 'stays'; }
   function sum(list, f) { return list.reduce(function (n, x) { return n + (f ? f(x) : x); }, 0); }
-
-  // ---------- Flow: rules (cards) → labels (columns) → where the mail lands ----------
-  // mail: the inbox plus the window's archived threads, so what skips the inbox shows too. opts.max: cards
-  // shown by name, the rest fold into one "more" node per column. opts.yours: your Gmail filters
-  // ({ id, query, label, threads }), drawn beside the board's rules (Gmail runs both).
-  function flow(mail, built, config, opts) {
-    opts = opts || {};
-    var byB = bucketsById(config), ps = placesOf(mail.threads, built, config), cards = {}, cardByKey = {};
-    built.cards.forEach(function (c) { cardByKey[c.key] = c; });
-    ps.forEach(function (p) { var k = p.card || '_none'; cards[k] = (cards[k] || 0) + 1; });
-    var keep = {}, max = opts.max || 30;
-    Object.keys(cards).sort(function (a, z) { return cards[z] - cards[a] || a.localeCompare(z); }).slice(0, max).forEach(function (k) { keep[k] = 1; });
-    var src = {}, l1 = {}, l2 = {}, labels = {}, gone = {}, outs = {};
-    ps.forEach(function (p) {
-      var k = p.card && keep[p.card] ? p.card : 'more:' + p.bucket, o = outcomeOf(p);
-      if (!src[k]) src[k] = k.indexOf('more:') === 0 ? { id: k, key: null, title: '', n: 0, cards: {}, bucket: p.bucket }
-        : { id: k, key: k, title: cardByKey[k] ? cardByKey[k].title : 'No card', n: 0, buckets: {} };
-      var s = src[k]; s.n++;
-      if (s.cards) s.cards[p.card] = 1; else s.buckets[p.bucket] = (s.buckets[p.bucket] || 0) + 1;
-      labels[p.bucket] = (labels[p.bucket] || 0) + 1; outs[o] = (outs[o] || 0) + 1;
-      if (p.t.labels.indexOf('INBOX') < 0) gone[p.bucket] = (gone[p.bucket] || 0) + 1;
-      var a = k + '\u0000col:' + p.bucket, b = 'col:' + p.bucket + '\u0000out:' + o; // node ids: card key, col:<column>, out:<outcome>
-      l1[a] = (l1[a] || 0) + 1; l2[b] = (l2[b] || 0) + 1;
-    });
-    var order = config.buckets.map(function (b) { return b.id; });
-    var rank = function (id) { var i = order.indexOf(id); return i < 0 ? order.length : i; };
-    var sources = Object.keys(src).map(function (k) {
-      var s = src[k];
-      if (s.cards) { s.more = Object.keys(s.cards).length; delete s.cards; s.title = s.more === 1 ? '1 smaller card' : s.more + ' smaller cards'; }
-      else { s.bucket = Object.keys(s.buckets).sort(function (a, z) { return s.buckets[z] - s.buckets[a]; })[0]; delete s.buckets; }
-      return s;
-    }).sort(function (a, z) { return rank(a.bucket) - rank(z.bucket) || !!a.more - !!z.more || z.n - a.n || a.title.localeCompare(z.title); });
-    var split = function (m) { return Object.keys(m).map(function (k) { var x = k.split('\u0000'); return { from: x[0], to: x[1], n: m[k] }; }); };
-    var yours = (opts.yours || []).filter(function (f) { return f.threads && f.threads.length; }).map(function (f) {
-      var b = f.label && R.bucketOfLabel(f.label, config);
-      return { id: 'yours:' + f.id, yours: true, filter: f.id, title: f.query, label: f.label, bucket: b ? b.id : null, n: f.threads.length };
-    });
-    return {
-      total: ps.length, archived: ps.filter(function (p) { return p.t.labels.indexOf('INBOX') < 0; }).length, sources: sources, yours: yours,
-      labels: order.filter(function (id) { return labels[id]; }).map(function (id) { return { id: 'col:' + id, n: labels[id], archived: gone[id] || 0, bucket: byB[id] }; }),
-      outcomes: ['labelled', 'stays', 'skip', 'out'].filter(function (o) { return outs[o]; }).map(function (o) { return { id: 'out:' + o, n: outs[o] }; }),
-      links: split(l1).concat(split(l2)),
-    };
-  }
 
   // ---------- Before → after: the inbox as Gmail labels it now → cards → the columns after Apply ----------
   // Inbox threads only (Apply re-sorts only those). Every node and link counts `ch`, the threads Apply changes,
@@ -372,33 +326,83 @@ var LabelboardInsights = (function (R) {
     });
     return { byFilter: byFilter, nodes: nodes, when: when };
   }
-  // Sankey input for flowLayout: how the label got there (left) → the label, a column's or one of yours (middle)
-  // → in or out of the inbox now (right). A thread counts once per label it has or a filter would give it.
-  var HOW_NODES = ['how:ours', 'how:yours', 'how:early', 'how:hand', 'how:missed', 'how:would'];
-  function filterFlow(trace, mail, config, opts) {
-    var max = opts && opts.max || 8, byId = {}, src = {}, mid = {}, out = {}, l1 = {}, l2 = {}, threads = {};
-    var inc = function (m, k) { m[k] = (m[k] || 0) + 1; }, size = function (k) { return Object.keys(trace.nodes[k]).length; };
-    mail.threads.forEach(function (t) { byId[t.id] = t; });
-    var labs = Object.keys(trace.nodes).filter(function (k) { return k.indexOf('lab:') === 0; }).sort(function (a, z) { return size(z) - size(a) || a.localeCompare(z); });
-    var keep = {}; labs.slice(0, labs.length > max ? max - 1 : max).forEach(function (k) { keep[k] = 1; });
-    Object.keys(trace.nodes).forEach(function (k) {
-      var to = k.indexOf('lab:') === 0 && !keep[k] ? 'lab:' : k; // 'lab:' folds the smaller labels of yours
-      Object.keys(trace.nodes[k]).forEach(function (id) {
-        var x = trace.nodes[k][id], s = x.how === 'filter' ? (x.ours ? 'how:ours' : 'how:yours') : 'how:' + x.how, o = byId[id].labels.indexOf('INBOX') >= 0 ? 'out:in' : 'out:out';
-        threads[id] = 1; inc(src, s); inc(mid, to); inc(out, o); inc(l1, s + '\u0000' + to); inc(l2, to + '\u0000' + o);
-      });
-    });
-    var byB = bucketsById(config), order = config.buckets.map(function (b) { return 'col:' + b.id; }).concat(labs.filter(function (k) { return keep[k]; }), ['lab:']);
-    var split = function (m) { return Object.keys(m).map(function (k) { var x = k.split('\u0000'); return { from: x[0], to: x[1], n: m[k] }; }); };
-    return {
-      total: sum(Object.keys(src).map(function (k) { return src[k]; })), threads: Object.keys(threads).length, yours: [],
-      sources: HOW_NODES.filter(function (k) { return src[k]; }).map(function (k) { return { id: k, n: src[k] }; }),
-      labels: order.filter(function (k) { return mid[k]; }).map(function (k) {
-        return { id: k, n: mid[k], bucket: k.indexOf('col:') === 0 ? byB[k.slice(4)] : null, name: k === 'lab:' ? (labs.length - Object.keys(keep).length) + ' more labels' : k.slice(4) };
-      }),
-      outcomes: ['out:in', 'out:out'].filter(function (k) { return out[k]; }).map(function (k) { return { id: k, n: out[k] }; }),
-      links: split(l1).concat(split(l2)),
+  // ---------- the Gmail tab: filters (left) → labels (right), from the trace ----------
+  // Each label a thread has, or a filter would give it, comes from one source: a column's filters (Labelboard's for that
+  // column's labels, 'col:<id>'), a filter of yours or one handed over outside the columns ('f:<gmail id>'), or none
+  // ('none': labelled by hand). Targets are a column's labels ('col:<id>') or a tree outside the columns ('tree:<top>').
+  // A link counts each thread once, by its state: 'now' (the label is there), 'apply' (a filter Apply makes gives it),
+  // 'missed' (a live filter matches, no label: it came before the filter). trees: top-level names to show even empty.
+  var SYS = /^(INBOX|UNREAD|IMPORTANT|STARRED|SENT|DRAFT|TRASH|SPAM|CHAT|CATEGORY_\w+)$/, STATE = ['now', 'apply', 'missed'];
+  function gmailFlow(trace, mail, config, trees) {
+    var t = trace.t, pairs = {}, byB = bucketsById(config);
+    var target = function (l) { var b = R.bucketOfLabel(l, config); return b ? 'col:' + b.id : 'tree:' + l.split('/')[0]; };
+    var put = function (id, l, src, st, ours) {
+      var k = id + '\u0000' + l, cur = pairs[k];
+      if (!cur || ours && !cur.ours || ours === cur.ours && STATE.indexOf(st) < STATE.indexOf(cur.st)) pairs[k] = { id: id, l: l, src: src, st: st, ours: ours };
     };
+    trace.filters.forEach(function (f) {
+      var x = t.byFilter[f.id], b = R.bucketOfLabel(f.label, config), src = f.ours && b ? 'col:' + b.id : 'f:' + (f.gid || f.id);
+      if (!x) return;
+      ['filter', 'early'].forEach(function (k) { x[k].forEach(function (id) { put(id, f.label, src, 'now', f.ours); }); });
+      x.missed.forEach(function (id) { put(id, f.label, src, 'missed', f.ours); });
+      x.would.forEach(function (id) { put(id, f.label, src, 'apply', f.ours); });
+    });
+    mail.threads.forEach(function (th) {
+      th.labels.forEach(function (l) { if (!SYS.test(l) && !pairs[th.id + '\u0000' + l]) pairs[th.id + '\u0000' + l] = { id: th.id, l: l, src: 'none', st: 'now' }; });
+    });
+    var links = {}, left = {}, right = {};
+    var seen = function (m, k, id) { (m[k] = m[k] || {})[id] = 1; };
+    Object.keys(pairs).forEach(function (k) {
+      var p = pairs[k], to = target(p.l), lk = p.src + '\u0000' + to, ln = links[lk] = links[lk] || { from: p.src, to: to, threads: {} }, was = ln.threads[p.id];
+      if (!was || STATE.indexOf(p.st) < STATE.indexOf(was)) ln.threads[p.id] = p.st;
+      seen(left, p.src, p.id); seen(right, to, p.id);
+    });
+    var size = function (m, k) { return m[k] ? Object.keys(m[k]).length : 0; };
+    var cols = config.buckets.filter(function (b) { return b.label; });
+    var rightIds = cols.map(function (b) { return 'col:' + b.id; }), extra = {};
+    (trees || []).forEach(function (n) { extra['tree:' + n] = 1; });
+    Object.keys(right).forEach(function (k) { if (k.indexOf('tree:') === 0) extra[k] = 1; });
+    rightIds = rightIds.concat(Object.keys(extra).sort(function (a, z) { return size(right, z) - size(right, a) || a.localeCompare(z); }));
+    var list = Object.keys(links).map(function (k) {
+      var ln = links[k], n = { now: 0, apply: 0, missed: 0 };
+      Object.keys(ln.threads).forEach(function (id) { n[ln.threads[id]]++; });
+      return { from: ln.from, to: ln.to, n: n.now + n.apply + n.missed, now: n.now, apply: n.apply, missed: n.missed };
+    });
+    // a filter outside the columns sits beside the label it fills most; labelled by hand goes last
+    var main = function (src) { var best = null; list.forEach(function (l) { if (l.from === src && (!best || l.n > best.n)) best = l; }); return best ? rightIds.indexOf(best.to) : 1e9; };
+    var others = Object.keys(left).filter(function (k) { return k.indexOf('f:') === 0; }).sort(function (a, z) { return main(a) - main(z) || size(left, z) - size(left, a) || a.localeCompare(z); });
+    var leftIds = cols.map(function (b) { return 'col:' + b.id; }).concat(others, left.none ? ['none'] : []);
+    var node = function (m) { return function (id) { var o = { id: id, n: size(m, id) }; if (id.indexOf('col:') === 0) o.bucket = byB[id.slice(4)]; if (id.indexOf('tree:') === 0) o.name = id.slice(5); if (id.indexOf('f:') === 0) o.filter = id.slice(2); return o; }; };
+    return { left: leftIds.map(node(left)), right: rightIds.map(node(right)), links: list };
+  }
+  // Rows down both sides, each as tall as minH plus its share of threads (k px each) plus o.extra[id] (an opened tree),
+  // or where the page put them (o.at['L:' or 'R:' + id] = {y, h}), and links stacked inside their rows in the order of
+  // the other end, so bands cross as little as they can.
+  function rowLayout(f, o) {
+    var gap = o.gap || 8, minH = o.minH || 56, extra = o.extra || {}, most = Math.max.apply(null, f.left.concat(f.right).map(function (n) { return n.n; }).concat(1));
+    var k = Math.min(o.k || 0.4, (o.maxBand || 96) / most), nodes = {}, height = 0;
+    [f.left, f.right].forEach(function (side, si) {
+      var y = 0;
+      side.forEach(function (n) {
+        var key = (si ? 'R:' : 'L:') + n.id, at = o.at && o.at[key], hh = at ? at.h : minH + (extra[n.id] || 0) + Math.round(n.n * k);
+        if (at) y = at.y;
+        nodes[key] = { id: n.id, side: si, y: y, h: hh, n: n.n, outY: 0, inY: 0 };
+        y += hh + gap;
+      });
+      height = Math.max(height, y - gap);
+    });
+    var links = f.links.map(function (l) { return Object.assign({ w: Math.max(1.5, l.n * k) }, l); });
+    var put = function (end, key, other) {
+      var by = {};
+      links.forEach(function (l) { (by[l[end]] = by[l[end]] || []).push(l); });
+      Object.keys(by).forEach(function (id) {
+        var nd = nodes[key + id], list = by[id].sort(function (a, z) { return nodes[other + a[end === 'from' ? 'to' : 'from']].y - nodes[other + z[end === 'from' ? 'to' : 'from']].y; });
+        var y = nd.y + Math.max(4, (nd.h - sum(list, function (l) { return l.w; })) / 2);
+        list.forEach(function (l) { l[end === 'from' ? 'y0' : 'y1'] = y + l.w / 2; y += l.w; });
+      });
+    };
+    put('from', 'L:', 'R:'); put('to', 'R:', 'L:');
+    return { nodes: nodes, links: links, height: height, k: k };
   }
   // Arrivals per day, for a filter row: bins[0] is everything older than `days`, then one per day up to today.
   function strip(items, now, days) {
@@ -446,7 +450,7 @@ var LabelboardInsights = (function (R) {
     return n;
   }
 
-  return { places: places, since: since, flow: flow, shift: shift, flowLayout: flowLayout, pack: pack, overview: overview, initials: initials, grid: grid, priorities: priorities,
-    turns: turns, waitsSince: waitsSince, replies: replies, filterTrace: filterTrace, filterFlow: filterFlow, filterRows: filterRows, strip: strip };
+  return { places: places, since: since, shift: shift, flowLayout: flowLayout, pack: pack, overview: overview, initials: initials, grid: grid, priorities: priorities,
+    turns: turns, waitsSince: waitsSince, replies: replies, filterTrace: filterTrace, gmailFlow: gmailFlow, rowLayout: rowLayout, filterRows: filterRows, strip: strip };
 })(typeof LabelboardRules !== 'undefined' ? LabelboardRules : require('./rules.js'));
 if (typeof module !== 'undefined') module.exports = LabelboardInsights;

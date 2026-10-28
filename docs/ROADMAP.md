@@ -29,7 +29,7 @@ inside an item is marked ✔ or ❓ with a date, never left in prose. When an it
 | 2 | Speed | ✅ Done 17 Oct | `buildPlan` and `buildCards` under 300 ms |
 | 3 | Trust | ✅ Done 17 Oct | undo, apply record, remove everything (filter status on the board ✅ 17 Oct) |
 | 4 | Daily use | 🟢 | re-read on open, Priorities that remembers; what changed ✅ 19 Oct (on Home) |
-| 5 | Before and after | 🟢 | the before → after strip and Flow you drag in ✅ 19 Oct; Flow and Filters as one tab |
+| 5 | Before and after | ✅ Done 28 Oct | the before → after strip and Flow you drag in ✅ 19 Oct; the Gmail tab ✅ 28 Oct |
 
 ✔ The repo is open (19 Oct 2026, history in `CHANGELOG.md`). The landing page and one-link install have
 no date and stay Later.
@@ -56,8 +56,13 @@ no date and stay Later.
 | More presets | Integrations | 🔵 Next | S each | — | |
 | Browser extension or Claude in Chrome | Integrations | ⚪ Later | L | — | ✔ only if the brief and the skill fall short (19 Oct) · Data out |
 | Search without a full redraw | Speed | 🔵 Next | S | — | |
-| Flow and Filters as one tab | Before and after | 🟢 Now | M | 5 | ✔ 19 Oct |
-| Folder map (the Labels tab) | Before and after | ✅ Done 26 Oct | M | — | ✔ own tab, with hand-over (26 Oct) |
+| The Gmail tab (Flow, Filters, Labels as one) | Before and after | ✅ Done 28 Oct | L | 5 | ✔ 28 Oct: filters → bands → labels (2a) |
+| Inbox tab (Overview, All threads as one) | Before and after | ✅ Done 28 Oct | S | — | ✔ 28 Oct: five tabs (1b) |
+| Merge any label of yours into any label | Before and after | ✅ Done 28 Oct | M | — | ✔ 28 Oct: menu with lookalikes, and drag (3a + 3b) |
+| Leaves the inbox per column | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: one menu, cards follow |
+| Runs on its own: read, then apply | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: both opt-in (4c) |
+| Leaves-later in the numbers | Daily use | 🔵 Next | S | — | |
+| Folder map (the Labels tab) | Before and after | ✅ Done 26 Oct | M | — | ✔ own tab, with hand-over (26 Oct); in the Gmail tab since 28 Oct |
 | One-link install | Install | ⚪ Later | M | — | ❓ template owner |
 | Gmail add-on | Install | ⚪ Later | — | — | needs Marketplace verification |
 | Board while it reads | First read | ⚪ Later | L | — | |
@@ -158,7 +163,16 @@ no date and stay Later.
   backfill unchanged on the real snapshot. `labels.js`, `rules.js labelColor`, `Code.js moveLabels_`/
   `unmove_`; tested. Why and how: `ARCHITECTURE.md` → Labels.
 
-Latest build v0.0.27 (`package.json`).
+- ✅ 28 Oct: one tab for Gmail (✔ picked 28 Oct from mocked options: 1b five tabs, 2a filters → bands →
+  labels, 3a + 3b merge by menu and by drag, 4c read and apply on their own, opt-in). Eight tabs became five:
+  *Gmail* (Flow, Filters, Labels) and *Inbox* (Overview, All threads). A column's *Skip inbox* switch became
+  *Leaves the inbox* (never, right away, after N days, once read), cards follow it; any label of yours merges
+  into any label, lookalikes found for you; Settings → *Runs on its own* reads every 6 hours and applies what
+  the rules placed while nothing of yours waits. Cards, filter queries, backfill and labels unchanged on the
+  real snapshot. `insights.js gmailFlow`/`rowLayout`, `labels.js twins`/`mergeTargets`, `rules.js leavesOf`/
+  `autoPlan`, `Code.js runAuto_`; tested. Why and how: `ARCHITECTURE.md` → On its own, Views.
+
+Latest build v0.0.28 (`package.json`).
 
 ## Item briefs
 
@@ -241,12 +255,11 @@ can be undone, and the ⋯ menu removes everything Labelboard made (Done, 17 Oct
 
 ### Before and after
 
-Today Board, Flow and Filters answer one question (where does this mail end up, and why) in three tabs,
-and the views don't show what a move just did. The pane under the board does now (Done, 19 Oct).
+Board, the pane under it and the Gmail tab answer where mail ends up and why (Done, 28 Oct).
 
-- **Flow and Filters as one tab** · 🟢 Now · M · ✔ 19 Oct. Now that the pane shows Now → After live,
-  the tab can be about how labels got there. One Sankey, Now → After, the left side split by who
-  placed the card (You, Claude, Rule, Gmail), the filter day bars below.
+- **Leaves-later in the numbers** · 🔵 Next · S. A column that leaves the inbox after N days counts as
+  staying in the rack and Home ("stay after you apply"), which is true on the day you apply but not a week
+  later. Count threads older than N days as leaving, hatched like right away; `rules.js threadPlace`.
 
 ### Daily use
 
@@ -255,8 +268,7 @@ back to, and it has no memory between visits.
 
 - **Re-read on open when stale** · 🟢 Now · S. Opening the board with a read older than an hour starts
   the incremental read (seconds) while the old snapshot shows, with a slim "Reading what changed…" line
-  in the header. The user opened the page, so this isn't a background trigger (`CLAUDE-PROSE.md` keeps
-  those out).
+  in the header. For everyone who leaves *Runs on its own* off (it reads every 6 hours when on).
 - **Priorities that remembers** · 🟢 Now · S. "Hide" on a waiting thread (a local list, cleared when
   the thread gets a new message) and a switch, off by default, to leave colleagues out ("Printer is
   fixed" is not a priority). Pace and view already persist in `config.ui`.
@@ -319,6 +331,12 @@ On the real account, before touching that area.
 - [ ] Card actions after a real Apply: a starring / mark-read / delete filter reads back from Gmail as
   Labelboard's own (not "edited"), `runLater` archives on its first hourly run, undo puts unread and
   trashed mail back. Only Node tests and the preview so far.
+- [ ] The Gmail tab on the real account: ~25 rows a side, bands where they should be, a merge into a
+  company's label (mail moved, filter of yours rewritten), a drag merge, then *Undo this Apply*.
+- [ ] *Leaves the inbox* after N days on a column: the hourly run archives only threads older than N days
+  with nothing newer or unread, and the log shows under the column. Then *Runs on its own*: a read 6 hours
+  later (header "read on its own"), an apply when nothing waits (header "applied on its own"), none while
+  the board has changes, and a read or Apply from the board refused while one runs.
 - [ ] Labels on the real account (Node tests and the preview only): `labelCounts` time on ~180 labels;
   a fold (messages moved, old label deleted, a filter of yours rewritten to the new label), a leftover
   cleared, colours patched, then *Undo this Apply* (labels made again with their colour, mail back).
@@ -341,7 +359,7 @@ On the real account, before touching that area.
 
 - ✖ Favicon logos in Overview (16 Oct): would send every sender's domain to Google's favicon service.
 - ✖ Cheaper first read with `messages.get`: wrong records for 10% of threads (`CLAUDE-PROSE.md`).
-- ✖ Automatic background re-reads: re-read stays manual or on open (`CLAUDE-PROSE.md`).
+- ✖ Automatic background re-reads (Oct 2026), reversed 28 Oct: now opt-in, every 6 hours (*Runs on its own*).
 - ✖ GmailApp instead of the Gmail API: needs the broadest mail scope (`CLAUDE-PROSE.md`).
 - ✖ External email benchmarks in Priorities: what exists is mostly vendor surveys.
 - ✖ In-app AI read (17 Oct): subject and snippet would leave the account. The AI stays outside the

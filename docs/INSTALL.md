@@ -62,7 +62,8 @@ the web app*, access *Only myself*.
      This is the narrowest Gmail permission that can put labels on mail.
    - Your mail settings (`gmail.settings.basic`): create the filters.
    - Run while you're not there (`script.scriptapp`, Google words it as managing triggers): one hourly
-     check, only while a card is set to *Archive it later*. It is removed when none is.
+     check, only while a column or card leaves the inbox later, or you switched on Settings → *Runs on
+     its own* (read what changed every 6 hours, and maybe apply). It is removed when none is.
    - Your email address: to tell your mail from mail sent to you.
 
    This is the second consent screen. If Google shows the permissions as checkboxes, **tick all four**
@@ -83,13 +84,14 @@ there; the local preview (`node dev/serve.mjs`) plus *Download filters for Gmail
 
 ## 5. Sort, look, apply
 
-1. **Board**: drag cards between columns. Each column is a Gmail label; its *Skip inbox* switch decides
-   whether that mail leaves the inbox. The numbers at the top say how many threads stay.
-2. **Flow, Filters, Overview, All threads, Priorities** (tabs above the board) show the same decisions
-   from other angles: which rule sends what where, how the labels already on your mail got there, who
+1. **Board**: drag cards between columns. Each column is a Gmail label; its *Leaves the inbox* menu
+   decides whether that mail stays, leaves right away, or leaves after a few days. The numbers at the
+   top say how many threads stay.
+2. **Gmail, Inbox, Priorities** (tabs above the board) show the same decisions from other angles: which
+   filter sends what to which label (and your own labels, which you can merge into any other), who
    fills the inbox, every thread at once, and what still waits on you. Clicking anything opens its
-   card. The board and Flow also count the last 30 days of archived mail, so what skips your inbox
-   shows; the bottom of Priorities has your reply numbers and the switch to stop reading it.
+   card. The board and the Gmail tab also count the last 30 days of archived mail, so what skips your
+   inbox shows; the bottom of Priorities has your reply numbers and the switch to stop reading it.
 3. **Review changes** says in plain words what will happen. Nothing touches Gmail until **Apply labels
    and filters**. Afterwards the button reads *Gmail is up to date* until you change the board again.
 4. Apply creates the labels, then the filters, then labels the threads already in your inbox. If it
