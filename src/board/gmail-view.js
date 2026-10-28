@@ -126,7 +126,7 @@ window.LabelboardGmailView = function (ctx) {
       return '<div class="gm-row gm-fil" data-node="' + key + '" style="--c:' + ctx.colorOf(b.id) + ';min-height:' + minH + 'px">' +
         '<div class="gm-l1"><span class="dot" style="background:' + ctx.colorOf(b.id) + '"></span><button type="button" class="linkish gm-name" data-ours="' + h(b.id) + '">' + h(b.name) + '</button>' +
         (cards.length ? toggle(key, cards.length, 'card') : '') + '</div>' +
-        '<div class="gm-l2"><span>' + h(s ? ctx.fsText(s) : 'No filter yet') + (gone ? ' · archived ' + fmt(gone) + ' in 14 days' : '') + '</span>' +
+        '<div class="gm-l2"><span>' + h(s ? ctx.fsText(s, b) : 'No filter yet') + (gone ? ' · archived ' + fmt(gone) + ' in 14 days' : '') + '</span>' +
         ctx.leavesSelect('class="leaves" data-leaves="' + h(b.id) + '" aria-label="When mail in ' + h(b.name) + ' leaves the inbox"', R.leavesOf(b)) + '</div>' +
         (open[key] ? '<ul class="gm-cards">' + cards.map(function (c) {
           return '<li><button type="button" class="linkish" data-card="' + h(c.key) + '">' + h(c.title) + '</button><span class="n">' + fmt(c.threads.length) + '</span>' +

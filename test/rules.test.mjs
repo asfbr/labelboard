@@ -545,6 +545,70 @@ test('when mail leaves the inbox: the column answers once, a card follows it or 
   assert.equal(R.cardLeaves({ act: { archive: false } }), 'never'); // a card set before the menu existed reads as it did
 });
 
+// ---------- the colleague cards: only colleagues on it, or colleagues with people outside ----------
+const team = { id: 'team', name: 'Team only', label: 'Team only', archive: false, color: { backgroundColor: '#999999', textColor: '#ffffff' } };
+const firmSnap = () => ({ threads: [
+  T({ id: 'in', from: 'ana@firm.com', to: ['bo@firm.com'], cc: ['me@firm.com'], labels: ['INBOX'] }),
+  T({ id: 'out', from: 'ana@firm.com', cc: ['lawyer@lex.io'], labels: ['INBOX', 'Team only'] }),
+  T({ id: 'acme', from: 'ana@firm.com', subject: 'Acme board pack', labels: ['INBOX'] }),
+  T({ id: 'ext', from: 'ceo@zeta.io', cc: ['ana@firm.com'], labels: ['INBOX'] })] });
+const firmCfg = (cards, cols) => ({ ...config, buckets: config.buckets.concat(cols || [team]), cards: cards || { 'firm:colleagues': { bucket: 'team' } } });
+
+test('who is on a thread: only colleagues, colleagues with people outside, or written by someone outside', () => {
+  const c = { me: ['me@home.net'], firmDomains: ['firm.com'] };
+  assert.equal(R.whoIsOn(T({ from: 'ana@firm.com', to: ['bo@eu.firm.com'], cc: ['me@home.net'] }), c), 'only');
+  assert.equal(R.whoIsOn(T({ from: 'me@home.net', to: [] }), c), 'only'); // a note to yourself
+  assert.equal(R.whoIsOn(T({ from: 'ana@firm.com', to: ['bo@firm.com'], cc: ['x@lex.io'] }), c), 'outside');
+  assert.equal(R.whoIsOn(T({ from: 'x@lex.io', to: ['ana@firm.com'] }), c), '');
+  assert.equal(R.whoIsOn(T({ from: 'ana@firm.com', to: ['ana@notfirm.com'] }), c), 'outside');
+});
+
+test('colleague mail splits into two cards by who is on it, and neither makes a Gmail filter', () => {
+  const snap = firmSnap(), b = R.buildCards(snap, config, acmeSeed);
+  assert.deepEqual([b.threadCards.in, b.threadCards.out, b.threadCards.acme], [['firm:colleagues'], ['firm:outside'], ['entity:portfolio:Acme']]);
+  const cfg = firmCfg(), plan = R.buildPlan(snap, b, cfg, acmeSeed, { ownedLabels: ['Team only'] });
+  assert.ok(!plan.filters.some((f) => /firm\.com/.test(f.query)), 'Gmail search can\'t say "nobody else"');
+  assert.ok(plan.labels.some((l) => l.name === 'Team only'));
+  assert.equal(R.noFilterWhy(b.cards.find((c) => c.key === 'firm:colleagues'), cfg), 'hourly');
+  // inbox now: the only-colleagues threads get it, the Acme one too (it is a rule, like a filter); the one with a lawyer loses it
+  const got = plan.backfill.filter((e) => e.label === 'Team only').flatMap((e) => e.threadIds).sort();
+  assert.deepEqual(got, ['acme', 'in']);
+  assert.deepEqual(plan.unlabel, [{ label: 'Team only', threadIds: ['out'] }]);
+  const rule = plan.later.find((r) => r.kind === 'people');
+  assert.deepEqual([rule.id, rule.side, rule.labels, rule.solo, rule.firm, rule.me], ['who:firm:colleagues', 'only', ['Team only'], ['Team only'], ['firm.com'], ['me@firm.com']]);
+  assert.deepEqual(R.laterRules(b, cfg), plan.later);
+});
+
+test('the hourly run: labels what fits, takes its own label off what no longer does, leaves the rest', () => {
+  const snap = firmSnap(), b = R.buildCards(snap, config, []), cols = [{ ...team, archive: true }];
+  const rule = R.peopleRules(b, firmCfg(null, cols))[0], t = (o) => T({ from: 'ana@firm.com', to: ['bo@firm.com'], ...o });
+  assert.deepEqual(R.peopleChange(rule, t({ labels: ['INBOX', 'UNREAD'] }), ['Team only']), { add: ['Team only'], remove: ['INBOX'] });
+  assert.equal(R.peopleChange(rule, t({ labels: ['Team only'] }), ['Team only']), null); // labelled before: done then
+  const joined = t({ cc: ['x@lex.io'], labels: ['INBOX', 'Team only'] });
+  assert.deepEqual(R.peopleChange(rule, joined, ['Team only']), { add: [], remove: ['Team only'] });
+  assert.equal(R.peopleChange(rule, joined, []), null, 'a label you handed over is never taken off');
+  // another card's Gmail filter also gives the label: the hourly run only adds it
+  const cfg = firmCfg({ 'firm:colleagues': { bucket: 'team' }, 'entity:portfolio:Acme': { bucket: 'team' } }, cols);
+  const shared = R.peopleRules(R.buildCards(snap, config, acmeSeed), cfg, null)[0];
+  assert.deepEqual(shared.solo, []);
+  assert.equal(R.peopleChange(shared, joined, ['Team only']), null);
+  // both colleague cards in one column: a thread moving from one to the other keeps the label
+  const both = R.peopleRules(b, firmCfg({ 'firm:colleagues': { bucket: 'team' }, 'firm:outside': { bucket: 'team' } }));
+  assert.equal(R.peopleChanges(both, joined, ['Team only']), null);
+  assert.deepEqual(R.peopleChanges(both, t({ labels: ['INBOX'] }), ['Team only']), { add: ['Team only'], remove: [] });
+  // a card's own actions ride along: star, never important, mark read
+  const own = R.peopleRules(b, firmCfg({ 'firm:colleagues': { bucket: 'team', act: { star: true, important: 'never', read: true } } }))[0];
+  assert.deepEqual(R.peopleChange(own, t({ labels: ['INBOX'] }), []), { add: ['Team only', 'STARRED'], remove: ['UNREAD', 'IMPORTANT'] });
+});
+
+test('a colleague card you placed keeps its rule with no mail in the read, and archives later only its label', () => {
+  const b = R.buildCards({ threads: [T({ id: 'z', from: 'ceo@zeta.io' })] }, config, []);
+  const cols = [{ ...team, later: { days: 2 } }], rules = R.laterRules(b, firmCfg({ 'firm:outside': { bucket: 'team' } }, cols));
+  assert.deepEqual(rules.map((r) => [r.id, r.label || null, r.days || null]), [['firm:outside', 'Team only', 2], ['who:firm:outside', null, null]]);
+  assert.equal(rules[0].queries[0], '(from:firm.com)');
+  assert.deepEqual(R.laterRules(b, firmCfg({})), []); // not placed: no rule
+});
+
 test('applying on its own: the plan Review would send, nothing only you start, and a settings key that ignores view picks', () => {
   const snap = acmeSnap(), seeds = acmeSeed.concat(zetaSeed), b = R.buildCards(snap, config, seeds);
   const full = R.buildPlan(snap, b, config, seeds), auto = R.autoPlan(snap, null, config, seeds, { ownedLabels: ['_Portfolio/Old'] });

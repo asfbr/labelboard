@@ -162,8 +162,9 @@ Unlike gmailctl, filters Labelboard did not create are never deleted.
 - Settings files are outside input too (shared, imported): column colours reach `style`/`fill` raw, so
   `bandOf()` passes only `#rrggbb`.
 - `script.scriptapp` exists for one installable trigger, `runLater`, kept while a column or card archives
-  later or *Runs on its own* is switched on, deleted when neither is. It runs as you, hourly: it takes inbox
-  threads matching a card's or column's own search out of the inbox, and, if you switched it on, reads what
+  later, a colleague card is in a labelled column, or *Runs on its own* is switched on, deleted when none is.
+  It runs as you, hourly: it labels colleague mail (below: The colleague cards), takes inbox threads
+  matching a card's or column's own search out of the inbox, and, if you switched it on, reads what
   changed and applies what the rules placed (above: On its own).
 - The manifest lists its scopes, so the server can't make outside requests (`UrlFetchApp` needs a scope
   it doesn't ask for). The repo holds no script id (`.clasp.json`), build (`dist/`) or mail data.
@@ -214,6 +215,24 @@ Unlike gmailctl, filters Labelboard did not create are never deleted.
 - The read adds `dir` (you in To or Cc) and `att` (a message whose MIME type is `multipart/mixed`, close
   to Gmail's `has:attachment`): both are in the metadata response. Threads read before keep neither until
   they change, so the board counts them as not matching those conditions; Gmail decides for new mail.
+
+## The colleague cards: labelled every hour, not by a filter (Oct 2026)
+- Gmail search can test whether *a* participant is a colleague (`from:firm.com`), never whether *everyone*
+  is. The old single card ("Colleagues", filter `from:` your domains) labelled every thread a colleague or
+  you wrote in, outsiders included. Now `rules.js whoIsOn` splits colleague mail in two cards by the read's
+  From (first sender not you), To and Cc: `firm:colleagues` (only colleagues and you) and `firm:outside`
+  (one of you wrote it, someone outside is on it). Bcc is never seen. Other cards' keys and filters don't move.
+- Neither makes a Gmail filter (`noFilterWhy` 'hourly'). Placed in a labelled column, each becomes a rule
+  in the `timed` blob (`peopleRules`, `kind: 'people'`), so trigger, Review diff and undo work as for
+  archiving later. Apply labels the inbox as usual (`threadPlace` gives a rule's label to every thread it
+  fits, as Gmail does for filters); `runLater` then calls `runPeople_` first: threads with mail since the
+  last run (`peopleAt`, an hour's margin) from one of you, plus those carrying a rule's label, are read
+  with `threads.get` and changed per `peopleChanges`. New mail gets its label within the hour.
+- A rule takes off only its `solo` labels (no Gmail filter of the plan gives them), only Labelboard's
+  own (not handed over), only when the thread stops fitting; a label a fitting rule gives always stays.
+  Its changes join the last Apply's record, so Undo and Remove everything take them back. A colleague
+  card can't delete; archiving later searches its column's label by id (`labelIds`), not a query.
+  Machine senders on your own domains (alerts@) count as colleagues: no automated-sender exclusion here.
 
 ## Emulation limits (board numbers vs Gmail)
 - Domain match includes subdomains (`acme.com` matches `mail.acme.com`), as Gmail's `from:acme.com` does.

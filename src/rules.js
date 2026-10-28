@@ -101,6 +101,15 @@ var LabelboardRules = (function () {
     for (var i = 0; i < (list || []).length; i++) if (addrMatches(list[i], value)) return true;
     return false;
   }
+  // Who is on a thread: 'only' (a colleague or you wrote it, and everyone on it is one of you), 'outside' (one of you
+  // wrote it, someone outside is on it), '' (someone outside wrote it). Colleagues: config.firmDomains; you: config.me.
+  // From the read's From (first sender not you), To and Cc: Bcc is never seen.
+  function whoIsOn(t, config) {
+    var me = (config.me || []).map(addr), firm = config.firmDomains || [];
+    var ours = function (a) { return me.indexOf(a) >= 0 || inList(domainOf(a), firm); };
+    if (!t.from || !ours(t.from)) return '';
+    return (t.to || []).every(ours) && (t.cc || []).every(ours) ? 'only' : 'outside';
+  }
   function quoteIfNeeded(v) { return /[\s()":{}]/.test(v) ? '"' + v.replace(/"/g, '') + '"' : v; }
   function termQuery(term) {
     var v = quoteIfNeeded(term.value);
@@ -296,8 +305,8 @@ var LabelboardRules = (function () {
       }
       var d = domainOf(t.from), k2;
       if (inList(d, firm) || me.indexOf(t.from) >= 0) {
-        k2 = 'firm:colleagues';
-        card(k2, function () { return { kind: 'firm', title: 'Colleagues (no other match)', terms: firm.map(function (f) { return { field: 'from', value: f }; }) }; });
+        k2 = whoIsOn(t, config) === 'only' ? 'firm:colleagues' : 'firm:outside';
+        card(k2, function () { return firmCard(k2, firm); });
       } else if (inList(d, generic) || inList(d, shared) || suffixes(d).some(function (x) { return !!seedByDomain[x]; })) {
         // a known organisation's mass mail (marketing@lexfirm.com): a rule for that sender, never for
         // the whole domain, which would also catch its people writing about your topics
@@ -320,6 +329,19 @@ var LabelboardRules = (function () {
     return { cards: list, threadCards: threadCards, entities: entities };
   }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  // The two colleague cards (whoIsOn). Gmail search can't say "nobody else is on it", so they make no Gmail filter:
+  // Labelboard's hourly run labels their new mail (peopleRules). Their terms only narrow archiving later.
+  var FIRM = { 'firm:colleagues': { side: 'only', title: 'Only colleagues (no other match)' }, 'firm:outside': { side: 'outside', title: 'Colleagues with people outside (no other match)' } };
+  function firmCard(key, firm) { return { kind: 'firm', side: FIRM[key].side, title: FIRM[key].title, terms: firm.map(function (f) { return { field: 'from', value: f }; }) }; }
+  // A colleague card you placed keeps its rule while the read has no mail for it, as a contact with no mail keeps its filter.
+  function firmCards(built, config) {
+    var out = built.cards.filter(function (c) { return c.kind === 'firm'; });
+    Object.keys(FIRM).forEach(function (k) {
+      if (!(config.cards || {})[k] || out.some(function (c) { return c.key === k; })) return;
+      var c = firmCard(k, config.firmDomains || []); c.key = k; c.threads = []; c.also = 0; c.suggestion = suggest(c, {}, config); out.push(c);
+    });
+    return out;
+  }
   // config.topics: topics that aren't in any contacts file, e.g. { name, bucket, sublabel, subjects[], domains[], emails[] }
   function topicSeeds(topics) {
     var out = [];
@@ -334,7 +356,7 @@ var LabelboardRules = (function () {
   // Context (accountant, agency, lawyer) also appears on topic threads, so its rule would label those
   // too: it only becomes a Gmail filter once you place the card yourself.
   function writesFilter(c, p, b) {
-    return !!(b && b.label) && !(c.role === 'context' && !p.decided);
+    return !!(b && b.label) && c.kind !== 'firm' && !(c.role === 'context' && !p.decided);
   }
 
   // ---------- suggestions ----------
@@ -580,9 +602,10 @@ var LabelboardRules = (function () {
   }
   // pf (optional): planFilters(built, config), when the caller has it already
   function placeCtx(built, config, pf) {
-    var cardByKey = {}, groups = (pf || planFilters(built, config)).groups, gl = Object.keys(groups).map(function (k) { return groups[k]; });
+    pf = pf || planFilters(built, config);
+    var cardByKey = {}, groups = pf.groups, gl = Object.keys(groups).map(function (k) { return groups[k]; });
     built.cards.forEach(function (c) { cardByKey[c.key] = c; });
-    return { buckets: bucketById(config), cardByKey: cardByKey, groups: gl, matches: groupMatcher(gl), does: Object.create(null) };
+    return { buckets: bucketById(config), cardByKey: cardByKey, groups: gl, matches: groupMatcher(gl), people: pf.people, does: Object.create(null) };
   }
   // Where one inbox thread ends up after sorting: its column (primary card's, or its own move), the labels
   // it gets, whether it leaves the inbox. Stats and the plan's backfill both read this, so what the board
@@ -618,6 +641,13 @@ var LabelboardRules = (function () {
     }
     // then every Gmail filter that matches it, as Gmail runs them all: a secondary card only through its filter
     ctx.matches(t).forEach(function (hit, i) { var g = ctx.groups[i]; if (hit) give(buckets[g.bucket], g.label, g); });
+    // and every colleague card's hourly rule it fits, as that run would label it
+    var who = ctx.people.length ? whoIsOn(t, config) : '';
+    ctx.people.forEach(function (r) {
+      if (r.side !== who) return;
+      give(buckets[r.bucket], r.labels[0], r.extra && whenMatches(r.when, t) ? r.extra : r.base);
+      if (r.labels[1]) give(buckets[r.bucket], r.labels[1]);
+    });
     return done(null);
   }
   // What Apply changes on one inbox thread, against the labels Gmail has on it now: null when nothing.
@@ -707,12 +737,19 @@ var LabelboardRules = (function () {
   // The timed rules for Apply to hand the server, with the cards' own Gmail searches (their filter's terms: a contact
   // not placed yet has none, so it never archives mail it doesn't label). A card with its own timing, a condition or
   // process signals gets its own rule (id: card key); cards that follow their column share one (id: 'col:<id>').
-  function laterRules(built, config) {
+  // A colleague card (no filter) archives only mail with its column's label (`label`, searched by id on the server).
+  // The colleague cards' hourly labelling (peopleRules) rides in the same list. pf (optional): planFilters(), when the caller has it.
+  function laterRules(built, config, pf) {
     var buckets = bucketById(config), out = [], cols = {}, order = [];
-    built.cards.forEach(function (c) {
-      var p = placement(c, config), b = buckets[p.bucket], d = cardDoes(c, config, b), terms = b ? ruleTerms(c, p, b) : [];
-      if (!d.later || !terms.length || b.id === 'unsorted') return;
+    built.cards.filter(function (c) { return c.kind !== 'firm'; }).concat(firmCards(built, config)).forEach(function (c) {
+      var p = placement(c, config), b = buckets[p.bucket], d = cardDoes(c, config, b), firm = c.kind === 'firm', terms = !b ? [] : firm ? (b.label ? c.terms : []) : ruleTerms(c, p, b);
+      if (!d.later || !(terms.length || firm && b.label) || b.id === 'unsorted') return;
       var own = (config.cards || {})[c.key] || {}, w = whenOf(own.when), must = c.must && c.must.length;
+      if (firm) {
+        var wq = w ? whenQuery(w, config.me) : '';
+        out.push(Object.assign({ id: c.key, title: c.title, label: b.label, queries: terms.length ? chunkQueries(terms, 500).map(function (q) { return '(' + q + ')' + (wq ? ' ' + wq : ''); }) : [wq] }, d.later));
+        return;
+      }
       if (!ownsLeave(own) && !w && !must) {
         var g = cols[b.id]; if (!g) { g = cols[b.id] = { b: b, terms: [], seen: Object.create(null) }; order.push(b.id); }
         terms.forEach(function (t) { var k = t.field + ':' + t.value; if (!g.seen[k]) { g.seen[k] = true; g.terms.push(t); } });
@@ -725,7 +762,48 @@ var LabelboardRules = (function () {
       var g = cols[id];
       out.push(Object.assign({ id: 'col:' + id, title: g.b.name, queries: chunkQueries(g.terms, 500).map(function (q) { return '(' + q + ')'; }) }, laterOf(g.b.later)));
     });
-    return out;
+    return out.concat(pf ? pf.people : peopleRules(built, config));
+  }
+  // ---------- the colleague cards' hourly labelling (Code.js runPeople_) ----------
+  // One rule per colleague card in a labelled column: { id: 'who:<card key>', kind: 'people', side, title, bucket, labels
+  // (column, sub-label), base / extra / when (cardDoes), firm, me, solo: its labels no Gmail filter gives, the only ones it takes off }.
+  function peopleRules(built, config, filters) {
+    var buckets = bucketById(config), gives = Object.create(null);
+    (filters || planFilters(built, config).filters).forEach(function (f) { gives[f.label] = true; });
+    return firmCards(built, config).map(function (c) {
+      var p = placement(c, config), b = buckets[p.bucket];
+      if (!b || !b.label) return null;
+      var d = cardDoes(c, config, b), labels = [b.label].concat(p.sublabel ? [labelName(b, p.sublabel)] : []);
+      return { id: 'who:' + c.key, kind: 'people', side: c.side, title: c.title, bucket: b.id, labels: labels, base: d.base, extra: d.extra, when: d.when,
+        firm: (config.firmDomains || []).slice(), me: (config.me || []).map(addr), solo: labels.filter(function (l) { return !gives[l]; }) };
+    }).filter(Boolean);
+  }
+  // What the hourly run does to one thread for one rule: labels and the card's actions when it fits and lacks a label
+  // (labelled before, its actions ran then), its solo labels off when it no longer fits. owned: labels Labelboard may take
+  // off (made by it, not handed over). → { add, remove } by label name ('INBOX', 'UNREAD', 'STARRED', 'IMPORTANT'), or null.
+  function peopleChange(r, t, owned) {
+    if (whoIsOn(t, { me: r.me, firmDomains: r.firm }) !== r.side) {
+      var off = r.solo.filter(function (l) { return t.labels.indexOf(l) >= 0 && owned.indexOf(l) >= 0; });
+      return off.length ? { add: [], remove: off } : null;
+    }
+    var add = r.labels.filter(function (l) { return t.labels.indexOf(l) < 0; });
+    if (!add.length) return null;
+    var a = r.extra && whenMatches(r.when, t) ? r.extra : r.base, ch = { add: add, remove: [] };
+    if (a.archive || a.trash) ch.remove.push('INBOX'); // never deleted: a colleague card has no Delete it
+    if (a.read) ch.remove.push('UNREAD');
+    if (a.star) ch.add.push('STARRED');
+    if (a.important === 'always') ch.add.push('IMPORTANT'); else if (a.important === 'never') ch.remove.push('IMPORTANT');
+    return ch;
+  }
+  // Every rule's change on one thread as one modify: a label a rule it fits gives stays on, whatever another takes off.
+  function peopleChanges(rules, t, owned) {
+    var add = [], remove = [], keep = [], put = function (list, l) { if (list.indexOf(l) < 0) list.push(l); };
+    rules.forEach(function (r) {
+      if (whoIsOn(t, { me: r.me, firmDomains: r.firm }) === r.side) r.labels.forEach(function (l) { put(keep, l); });
+      var ch = peopleChange(r, t, owned); if (ch) { ch.add.forEach(function (l) { put(add, l); }); ch.remove.forEach(function (l) { put(remove, l); }); }
+    });
+    remove = remove.filter(function (l) { return keep.indexOf(l) < 0; });
+    return add.length || remove.length ? { add: add, remove: remove } : null;
   }
   // A one-line idea for what a card could do, from its mail: none once the card does something of its own.
   // { text, act?, when?, later? }. Answered = a message of yours in it (the read's timeline).
@@ -786,7 +864,7 @@ var LabelboardRules = (function () {
       });
     });
     withParents(labels, config).sort(function (a, b) { return a.name.localeCompare(b.name); });
-    return { labels: labels, filters: filters, backfill: backfill, unlabel: Object.keys(off).sort().map(function (l) { return off[l]; }), later: laterRules(built, config) };
+    return { labels: labels, filters: filters, backfill: backfill, unlabel: Object.keys(off).sort().map(function (l) { return off[l]; }), later: laterRules(built, config, pf) };
   }
   // The mail cards are built from: the inbox, plus the window's threads someone else wrote in (recent: the window blob).
   function mailOf(snapshot, recent) {
@@ -827,11 +905,12 @@ var LabelboardRules = (function () {
     if (!writesFilter(c, p, b)) return [];
     return c.role === 'counterparty' && !p.decided ? c.terms.filter(function (t) { return t.value.indexOf('@') >= 0; }) : c.terms;
   }
-  // Why a card writes no filter for new mail: 'column' (no label), 'context' (a contact not placed yet),
-  // 'people' (a company not placed yet, with no known person to match); null when it writes one.
+  // Why a card writes no filter for new mail: 'column' (no label), 'hourly' (a colleague card: labelled every hour),
+  // 'context' (a contact not placed yet), 'people' (a company not placed yet, with no known person to match); null when it writes one.
   function noFilterWhy(c, config) {
     var p = placement(c, config), b = bucketById(config)[p.bucket];
     if (!(b && b.label)) return 'column';
+    if (c.kind === 'firm') return 'hourly';
     if (!writesFilter(c, p, b)) return 'context';
     return ruleTerms(c, p, b).length ? null : 'people';
   }
@@ -884,7 +963,10 @@ var LabelboardRules = (function () {
       filters.push({ id: 'adopted:' + id, label: a.label, bucket: b ? b.id : null, query: a.query, archive: !!a.archive });
       if (!labels.some(function (l) { return l.name === a.label; })) labels.push({ name: a.label, color: labelColor(a.label, config) });
     });
-    return { labels: withParents(labels, config), filters: filters, groups: groups };
+    // the colleague cards' labels, which no filter makes
+    var people = peopleRules(built, config, filters);
+    people.forEach(function (r) { r.labels.forEach(function (n) { if (!labels.some(function (l) { return l.name === n; })) labels.push({ name: n, color: labelColor(n, config) }); }); });
+    return { labels: withParents(labels, config), filters: filters, groups: groups, people: people };
   }
   // Seeded entities that have no mail yet count too: future mail is the point.
   function allCards(built, config) {
@@ -1135,6 +1217,7 @@ var LabelboardRules = (function () {
     termMatches: termMatches, termQuery: termQuery, chunkQueries: chunkQueries,
     buildCards: buildCards, suggest: suggest, bucketForLabel: bucketForLabel,
     cardDoes: cardDoes, colActs: colActs, whenOf: whenOf, whenMatches: whenMatches, whenQuery: whenQuery, laterOf: laterOf, laterRules: laterRules, actionHint: actionHint,
+    whoIsOn: whoIsOn, peopleRules: peopleRules, peopleChange: peopleChange, peopleChanges: peopleChanges,
     leavesOf: leavesOf, setLeaves: setLeaves, cardLeaves: cardLeaves, setCardLeaves: setCardLeaves, laterKey: laterKey,
     mailOf: mailOf, trimBackfill: trimBackfill, settingsKey: settingsKey, autoPlan: autoPlan,
     placement: placement, mergeReview: mergeReview, reviewBrief: reviewBrief, briefText: briefText, orphans: orphans, remapBuckets: remapBuckets, remapSeeds: remapSeeds, threadMove: threadMove, threadPlace: threadPlace, threadChange: threadChange, placeCtx: placeCtx, isMachine: isMachine, stats: stats, buildPlan: buildPlan, planFilters: planFilters, noFilterWhy: noFilterWhy, diffFilters: diffFilters, toGmailXml: toGmailXml,

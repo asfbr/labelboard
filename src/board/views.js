@@ -71,7 +71,7 @@ window.LabelboardViews = function (ctx) {
       '<div class="fk-row">' + key('filter', 'Labelled, a filter matches') + key('early', 'Labelled at Apply') + key('hand', 'Labelled by hand') + key('missed', 'Came before the filter: no label') + key('would', 'Caught once you apply') + '</div>' +
       '<div class="frs">' + (rows.columns.length ? '<h4 class="frs-h">Labelboard\'s, by column</h4>' + rows.columns.map(function (r) {
         var b = r.bucket, s = ctx.colStatus(b);
-        return rowHtml(' data-ours="' + h(b.id) + '"', '<span class="fr-t">' + h(b.name) + '</span>' + ctx.labelChip(b) + (s ? '<span class="fr-s">' + h(ctx.fsText(s)) + '</span>' : ''),
+        return rowHtml(' data-ours="' + h(b.id) + '"', '<span class="fr-t">' + h(b.name) + '</span>' + ctx.labelChip(b) + (s ? '<span class="fr-s">' + h(ctx.fsText(s, b)) + '</span>' : ''),
           r, colorOf(b.id), at[b.id], now, days);
       }).join('') : '') +
       (live.length ? '<h4 class="frs-h">Yours</h4>' + live.map(function (r) {

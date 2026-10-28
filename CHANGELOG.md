@@ -3,6 +3,13 @@
 One section per version, newest first; changes not released yet go under `## Unreleased` at the top. Each version is one Apps Script deploy, and the release zip of
 the same tag holds its `dist/`. v0.0.1 to v0.0.8 went out labelled v0.1 to v0.8.0 and were renumbered.
 
+## Unreleased
+- Colleague mail is now two cards: **Only colleagues** (nobody outside on it) and **Colleagues with
+  people outside**. Gmail filters can't tell who else is on a thread, so neither makes one: in a labelled
+  column, Labelboard labels their new mail every hour and takes the label off a thread when someone outside
+  joins. Before, the single Colleagues card's filter labelled anything a colleague wrote, outsiders or not.
+  Apply re-sorts the inbox the same way; Undo takes back what the hourly run did.
+
 ## v0.0.28 · 28 Oct 2026
 - Five tabs instead of eight. **Gmail** takes over Flow, Filters and Labels: filters on the left (each
   column's, yours, none), labels on the right in Gmail's colours, your threads as bands between them,

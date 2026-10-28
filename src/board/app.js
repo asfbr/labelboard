@@ -473,7 +473,7 @@
     Object.keys(pf.groups).forEach(function (k) { var gr = pf.groups[k]; gr.cards.forEach(function (c) { var l = byCard[c] = byCard[c] || []; if (l.indexOf(gr.label) < 0) l.push(gr.label); }); });
     var st = g.filters ? LabelboardSync.filterStatus(pf.filters, g.filters, g.gone, adopt, S.config.release, S.config.restoreFilters) : null;
     var newLabels = g.labels ? pf.labels.filter(function (l) { return g.labels.indexOf(l.name) < 0; }).length : 0;
-    var later = R.laterRules(S.built, S.config), laterNew = JSON.stringify(later) !== JSON.stringify(g.later ? g.later.rules : []) ? 1 : 0; // the timed rules, as one change
+    var later = R.laterRules(S.built, S.config, pf), laterNew = JSON.stringify(later) !== JSON.stringify(g.later ? g.later.rules : []) ? 1 : 0; // the timed rules, as one change
     var ls = labelState(pf), hk = ls ? ls.hk : null, labelsNew = hk ? hk.recolor.length + hk.repaint + hk.moves.length + hk.adoptLabels.length : 0;
     S.fs = { filters: pf.filters, status: st, byCard: byCard, later: later, laterNew: laterNew, pending: st ? st.actions.create.length + st.actions.remove.length + adopt.length + (S.config.release || []).length + newLabels + laterNew + labelsNew : null };
   }
@@ -508,13 +508,21 @@
     Object.keys(st.byLabel).forEach(function (l) { if (mine(l)) Object.keys(sum).forEach(function (k) { sum[k] += st.byLabel[l][k]; }); });
     return sum;
   }
-  function fsText(s) {
-    var state = LabelboardSync.filterState(s), many = Math.max(s.want, s.remove) > 1, verb = FS[state];
-    return state === 'none' ? 'No filter yet' : (many ? 'Filters ' : 'Filter ') + (Array.isArray(verb) ? verb[many ? 1 : 0] : verb);
+  // b (optional): a column with no filter whose colleague card is labelled every hour says so instead
+  function fsText(s, b) {
+    var state = LabelboardSync.filterState(s), many = Math.max(s.want, s.remove) > 1, verb = FS[state], hr = state === 'none' && hourly(b);
+    return hr ? (hr === 'live' ? 'Labelled every hour' : 'Labelled every hour once you apply') : state === 'none' ? 'No filter yet' : (many ? 'Filters ' : 'Filter ') + (Array.isArray(verb) ? verb[many ? 1 : 0] : verb);
+  }
+  // A column's colleague card rule (rules.js peopleRules): 'live' once the server has it as the board has it, 'new' before; '' with none.
+  function hourly(b) {
+    var r = b && (S.fs && S.fs.later || []).filter(function (x) { return x.kind === 'people' && x.bucket === b.id; })[0]; if (!r) return '';
+    var g = S.gmail || {}, on = (g.later && g.later.rules || []).filter(function (x) { return x.id === r.id; })[0];
+    return on && JSON.stringify(on) === JSON.stringify(r) ? 'live' : 'new';
   }
   function colFsHtml(b) {
     var s = colStatus(b); if (!s) return '';
-    var state = LabelboardSync.filterState(s);
+    var state = LabelboardSync.filterState(s), hr = state === 'none' && hourly(b);
+    if (hr) return '<span class="fs fs-pill fs-' + hr + '" title="Gmail filters can\'t tell who else is on a thread: Labelboard labels this column\'s colleague mail every hour.">' + FUNNEL + h(fsText(s, b)) + '</span>';
     return state === 'none' ? '<span class="fs fs-pill fs-none" title="' + h(FS_TIP.none) + '">' + FUNNEL + h(fsText(s)) + '</span>'
       : '<button type="button" class="fs fs-pill fs-' + state + '" data-ours="' + h(b.id) + '" title="' + h(FS_TIP[state] + ' Click to see the filters.') + '">' + FUNNEL + h(fsText(s)) + '</button>';
   }
@@ -535,6 +543,13 @@
       f.labels.forEach(function (l, i) { list.push({ id: f.id + (i ? '#' + i : ''), gid: f.id, query: f.query, label: l, live: true, ours: !!(f.owned || a[f.id]), at: f.at || null }); });
     });
     (st ? st.actions.create : S.fs ? S.fs.filters : []).forEach(function (f, i) { list.push({ id: 'new:' + i, query: f.query, label: f.label, live: false, ours: true }); });
+    // the colleague cards' hourly rules count as filters here: live once Apply handed them to the server
+    var on = (g.later && g.later.rules || []).map(function (r) { return r.id; });
+    (S.fs ? S.fs.later : []).forEach(function (r) {
+      if (r.kind !== 'people') return;
+      var who = { me: r.me, firmDomains: r.firm }, match = function (t) { return R.whoIsOn(t, who) === r.side; };
+      r.labels.forEach(function (l, i) { list.push({ id: r.id + (i ? '#' + i : ''), query: r.side + ':' + r.firm.concat(r.me).join(','), label: l, live: on.indexOf(r.id) >= 0, ours: true, match: match }); });
+    });
     var key = list.map(function (f) { return [f.query, f.label, f.live, f.at].join('|'); }).join('\n') + '\n' + S.config.buckets.map(function (b) { return b.label; }).join('|');
     if (!S.tr || S.tr.key !== key || S.tr.mail !== S.mail) S.tr = { key: key, mail: S.mail, filters: list, t: window.LabelboardInsights.filterTrace(S.mail, list, S.config) };
     return S.tr;
@@ -735,6 +750,7 @@
   }
   function cardFsHtml(c, b, query) {
     var f = cardFs(c), labels = f.labels, note, tag;
+    if (f.why === 'hourly') return peopleFsHtml(c);
     if (f.why) { tag = fsTag('none', 'None'); note = NO_FS[f.why](b || { name: 'Its column', id: '' }); }
     else {
       var chips = labels.map(nameChip).join(' '), state = f.state === 'plan' ? null : f.state, skips = b && R.cardDoes(c, S.config, b).base.archive ? ' and skips the inbox' : '';
@@ -748,6 +764,17 @@
     var how = b && b.label ? howLine(howOf('col:' + b.id, c.threads)) : '';
     return '<div class="field" id="dr-fs"><span class="fs-head">Gmail filter ' + tag + '</span><div class="query">' + h(query) + '</div><p class="note">' + note + '</p>' +
       (how ? '<p class="note">Its mail so far: ' + h(how) + '. <button type="button" class="linkish" data-goto="gmail">See it day by day</button></p>' : '') + '</div>';
+  }
+  // A colleague card makes no filter (Gmail can't tell who else is on a thread): Labelboard labels its mail every hour (rules.js peopleRules).
+  function peopleFsHtml(c) {
+    var g = S.gmail.later || {}, id = 'who:' + c.key, rule = (S.fs && S.fs.later || []).filter(function (r) { return r.id === id; })[0];
+    var live = (g.rules || []).filter(function (r) { return r.id === id; })[0], log = (g.log || {})[id], n = log ? log.reduce(function (m, x) { return m + x[1]; }, 0) : 0;
+    var same = live && JSON.stringify(live) === JSON.stringify(rule), state = same ? 'live' : live ? 'change' : 'new';
+    var what = c.side === 'only' ? 'Labelboard checks your mail every hour and labels the threads with nobody but you and your colleagues on them, and takes the label off one when someone outside joins.'
+      : 'Labelboard checks your mail every hour and labels the threads a colleague wrote with someone outside on them.';
+    var when = state === 'live' ? (n ? plural(n, 'thread') + ' labelled this way in the last 14 days.' : '') : state === 'change' ? 'What it does changes on the next Apply.' : 'It starts on the next Apply. Until then, new mail like this arrives without a label.';
+    return '<div class="field" id="dr-fs"><span class="fs-head">Labelled every hour ' + fsTag(state, { live: 'On', change: 'Changes on Apply', new: 'Starts on Apply' }[state]) + '</span>' +
+      '<p class="note">Gmail filters can\'t tell who else is on a thread, so this card makes none. ' + h(what) + ' New mail gets its label within the hour. ' + h(when) + '</p></div>';
   }
   // The drawer's "What happens to its mail": when it leaves the inbox and Gmail's other actions (the column's by default),
   // a condition for the yeses, and an idea from its mail (R.actionHint). Every change makes the card yours, like a sub-label.
@@ -768,7 +795,7 @@
       '<label class="field">Important<select data-act="important">' + opt('', 'As Gmail decides', act.important || '') + opt('always', 'Always', act.important || '') + opt('never', 'Never', act.important || '') + '</select></label>' +
       '</div>' +
       '<div class="does-checks"><label><input type="checkbox" data-act="star"' + (act.star ? ' checked' : '') + '> Star it</label>' +
-      '<label class="danger-text"><input type="checkbox" data-act="trash"' + (act.trash ? ' checked' : '') + '> Delete it</label></div>' +
+      (c.kind === 'firm' ? '' : '<label class="danger-text"><input type="checkbox" data-act="trash"' + (act.trash ? ' checked' : '') + '> Delete it</label>') + '</div>' +
       '<p class="note does-confirm" id="dr-trash" hidden>New mail like this goes straight to the trash, where Gmail deletes it after 30 days. Mail already in your inbox only leaves it. <button type="button" class="btn danger-fill" id="dr-trash-yes">Delete new mail like this</button> <button type="button" class="btn" id="dr-trash-no">Keep it</button></p>' +
       '<details class="does-when"' + (own.when && R.whenOf(own.when) ? ' open' : '') + '><summary>Only when… <span class="note">' + h(R.whenOf(own.when) ? whenWords(w) : 'always') + '</span></summary>' +
       '<p class="note">The yeses above wait for this; the label and the noes always apply.</p>' +
@@ -783,7 +810,7 @@
   // The hourly rule a card's archiving runs in (rules.js laterRules): its own, or its column's when it follows the column.
   function laterId(c, b) {
     var own = (S.config.cards || {})[c.key];
-    return R.cardLeaves(own) || R.whenOf(own && own.when) || (c.must && c.must.length) ? c.key : 'col:' + b.id;
+    return c.kind === 'firm' || R.cardLeaves(own) || R.whenOf(own && own.when) || (c.must && c.must.length) ? c.key : 'col:' + b.id;
   }
   function doesNote(c, b, d, later, live, gone) {
     var inbox = c.threads.filter(function (id) { return inInbox(S.byId[id]); }), ts = inbox.map(function (id) { return S.byId[id]; }), out = [];
@@ -794,7 +821,8 @@
     var n = mailOf(c.threads, b);
     if (n.leave || n.read) out.push('On Apply: ' + [n.leave && plural(n.leave, 'thread') + ' leave' + (n.leave === 1 ? 's' : '') + ' the inbox', n.read && fmt(n.read) + ' marked read'].filter(Boolean).join(', ') + '.');
     if (d.base.star || d.base.trash || d.base.important || d.extra && (d.extra.star || d.extra.trash || d.extra.important)) out.push('Starring, importance and deleting are for new mail; mail already here keeps its stars' + (d.base.trash || d.extra && d.extra.trash ? ' and only leaves the inbox' : '') + '.');
-    if (later && R.noFilterWhy(c, S.config)) out.push('Archiving later waits until this card makes a Gmail filter (see below), so it never archives mail it doesn\'t label.');
+    var nf = R.noFilterWhy(c, S.config);
+    if (later && nf && nf !== 'hourly') out.push('Archiving later waits until this card makes a Gmail filter (see below), so it never archives mail it doesn\'t label.');
     else if (later) out.push((live ?'Archiving later is on: Labelboard checks every hour.' : 'Archiving later starts when you apply; Labelboard then checks every hour.') + (gone ? ' It archived ' + plural(gone, 'thread') + ' in the last 14 days.' : ''));
     return out.length ? '<p class="note does-sum">' + out.map(h).join(' ') + '</p>' : '';
   }
@@ -819,7 +847,7 @@
     });
     $('dr-does').querySelector('[data-act="star"]').onchange = function () { setAct('star', this.checked || undefined); };
     var trash = $('dr-does').querySelector('[data-act="trash"]');
-    trash.onchange = function () {
+    if (trash) trash.onchange = function () {
       if (!this.checked) return setAct('trash', undefined);
       this.checked = false; $('dr-trash').hidden = false; $('dr-trash-yes').focus(); // asks first
     };
@@ -1061,7 +1089,10 @@
     });
     (plan.unlabel || []).forEach(function (e) { e.threadIds.forEach(function (t) { off[t] = 1; }); });
     var nAdd = Object.keys(add).length, nLeave = Object.keys(leave).length, nRead = Object.keys(read).length, nOff = Object.keys(off).length, done = st.apply.sorted;
-    var later = plan.later || [], laterWas = g.later ? g.later.rules.length : 0;
+    var arch = function (r) { return r.kind !== 'people'; }, later = (plan.later || []).filter(arch), laterWas = g.later ? g.later.rules.filter(arch).length : 0;
+    var who = (plan.later || []).filter(function (r) { return !arch(r); });
+    var moved = function (list, keep) { return JSON.stringify(list) !== JSON.stringify(g.later ? g.later.rules.filter(keep) : []); };
+    var laterNew = moved(later, arch), whoNew = moved(who, function (r) { return !arch(r); });
     var filters = plural(plan.filters.length, 'filter') + ' for new mail';
     if (g.filters) {
       var fa = LabelboardSync.filterStatus(plan.filters, g.filters, g.gone, plan.adopt, plan.release, plan.restore).actions;
@@ -1079,7 +1110,9 @@
       li(plan.release.length ? plural(plan.release.length, 'filter') + ' handed back to you.' : '') +
       li('Your inbox: ' + (nAdd || nLeave || nRead ? [nAdd && plural(nAdd, 'thread') + ' get labels', nLeave && fmt(nLeave) + (nAdd ? '' : ' threads') + ' leave the inbox', nRead && fmt(nRead) + (nAdd || nLeave ? '' : ' threads') + ' are marked read'].filter(Boolean).join(', ') : 'no thread needs a label') +
         '. It goes from <b>' + fmt(st.before.inbox) + '</b> to <b>' + fmt(st.after.inbox) + '</b>.') +
-      li(S.fs && S.fs.laterNew ? (later.length ? 'Mail leaves the inbox later for ' + plural(later.length, 'column or card', 'columns and cards') + ': Labelboard checks your inbox every hour and archives what is due (' + h(later.map(function (r) { return r.title; }).slice(0, 4).join(', ') + (later.length > 4 ? '…' : '')) + ').' : 'Archiving later stops' + (laterWas ? ' for the ' + plural(laterWas, 'card') + ' that had it' : '') + '.') : '') +
+      li(laterNew ? (later.length ? 'Mail leaves the inbox later for ' + plural(later.length, 'column or card', 'columns and cards') + ': Labelboard checks your inbox every hour and archives what is due (' + h(later.map(function (r) { return r.title; }).slice(0, 4).join(', ') + (later.length > 4 ? '…' : '')) + ').' : 'Archiving later stops' + (laterWas ? ' for the ' + plural(laterWas, 'card') + ' that had it' : '') + '.') : '') +
+      li(whoNew ? (who.length ? 'New mail with ' + who.map(function (r) { return (r.side === 'only' ? 'only your colleagues on it' : 'a colleague and someone outside on it') + ' gets ' + h(r.labels[0]); }).join('; with ') +
+        ' within the hour: Gmail filters can\'t tell who else is on a thread, so Labelboard checks every hour.' : 'Labelboard stops labelling colleague mail every hour.') : '') +
       li(nOff ? plural(nOff, 'thread') + ' lose a label Labelboard gave them before (' + h(plan.unlabel.map(function (e) { return e.label; }).join(', ')) + '): their card moved.' : '') +
       house.lines.map(li).join('') + (house.lines.length ? '<li><button type="button" class="linkish" id="rv-labels">See every label on the Gmail tab</button></li>' : '') +
       '</ul><h3 class="rv-h">What doesn\'t change</h3><ul class="rv-list">' +

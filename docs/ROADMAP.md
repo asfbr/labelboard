@@ -62,6 +62,7 @@ no date and stay Later.
 | Leaves the inbox per column | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: one menu, cards follow |
 | Runs on its own: read, then apply | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: both opt-in (4c) |
 | Leaves-later in the numbers | Daily use | 🔵 Next | S | — | |
+| Only colleagues on it (hourly, no filter) | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: two colleague cards, labelled hourly |
 | Folder map (the Labels tab) | Before and after | ✅ Done 26 Oct | M | — | ✔ own tab, with hand-over (26 Oct); in the Gmail tab since 28 Oct |
 | One-link install | Install | ⚪ Later | M | — | ❓ template owner |
 | Gmail add-on | Install | ⚪ Later | — | — | needs Marketplace verification |
@@ -171,6 +172,11 @@ no date and stay Later.
   the rules placed while nothing of yours waits. Cards, filter queries, backfill and labels unchanged on the
   real snapshot. `insights.js gmailFlow`/`rowLayout`, `labels.js twins`/`mergeTargets`, `rules.js leavesOf`/
   `autoPlan`, `Code.js runAuto_`; tested. Why and how: `ARCHITECTURE.md` → On its own, Views.
+- ✅ 28 Oct: only colleagues on it (asked for: a colleagues-only label caught threads with outsiders). Colleague
+  mail is two cards, *Only colleagues* and *Colleagues with people outside*; neither makes a Gmail filter
+  (search can't say "nobody else"), the hourly run labels their mail and unlabels a thread someone outside
+  joins. Other cards, filters and backfill unchanged on the real snapshot. `rules.js whoIsOn`/`peopleRules`/
+  `peopleChanges`, `Code.js runPeople_`; tested. Why and how: `ARCHITECTURE.md` → The colleague cards.
 
 Latest build v0.0.28 (`package.json`).
 

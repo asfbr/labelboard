@@ -298,7 +298,7 @@ var LabelboardInsights = (function (R) {
   // ---------- Filters: how each label got onto the mail ----------
   // Gmail doesn't record who added a label, so this asks whether a filter's search matches (R.parseQuery).
   // filters: [{ id, query, label, live, ours, at }]: live = in Gmail now, else made on Apply; at = when Labelboard
-  // made it (ms), if known. Per thread and label, best first: filter (labelled, a live filter matches), early
+  // made it (ms), if known; match (optional) stands in for the query (a colleague card's hourly rule). Per thread and label, best first: filter (labelled, a live filter matches), early
   // (labelled before it existed), hand (labelled, no filter), missed (a live filter matches, no label), would (made on Apply).
   var HOW = ['filter', 'early', 'hand', 'missed', 'would'];
   function arrival(t) { // its last message from someone else: the one a filter would have seen arrive
@@ -306,7 +306,7 @@ var LabelboardInsights = (function (R) {
     return m.length ? 1000 * Math.max.apply(null, m.map(function (x) { return x[0]; })) : Date.parse(t.date);
   }
   function filterTrace(mail, filters, config) {
-    var fs = filters.filter(function (f) { return f.label; }).map(function (f) { return { f: f, m: R.parseQuery(f.query) }; });
+    var fs = filters.filter(function (f) { return f.label; }).map(function (f) { return { f: f, m: f.match || R.parseQuery(f.query) }; });
     var byFilter = {}, nodes = {}, when = {}, adds = {}; // adds: labels some filter gives, so a hand-given one counts too
     fs.forEach(function (x) { byFilter[x.f.id] = { preview: !!x.m, filter: [], early: [], missed: [], would: [] }; adds[x.f.label] = 1; });
     mail.threads.forEach(function (t) {

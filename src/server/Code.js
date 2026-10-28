@@ -377,6 +377,9 @@ function setLater_(rules) {
   var was = readLater_();
   putBlob_('timed', rules);
   if (PROPS.getProperty('later') != null) PROPS.deleteProperty('later');
+  // the colleague cards' run starts from now: Apply has just labelled the inbox
+  if (!rules.some(function (r) { return r.kind === 'people'; })) PROPS.deleteProperty('peopleAt');
+  else if (!PROPS.getProperty('peopleAt')) PROPS.setProperty('peopleAt', String(Date.now()));
   if (rules.length || was.length) syncTrigger_(); // a board that never archives later never touches triggers
 }
 // The one hourly trigger (handler runLater) exists while a column or card archives later, or you switched on reading on
@@ -390,12 +393,16 @@ function syncTrigger_() {
 function runLater() {
   var S = LabelboardSync, start = Date.now(), log = JSON.parse(PROPS.getProperty('laterLog') || '{}'), now = Date.now(), rules = readLater_();
   BUDGET = { tokens: 0, at: 0 };
+  var people = rules.filter(function (r) { return r.kind === 'people'; }), byName = {};
+  if (people.length) runPeople_(people, log, start, now); // labelled first, so archiving later sees the labels
+  if (rules.some(function (r) { return r.label; })) labelList_().forEach(function (l) { byName[l.name] = l.id; });
   rules.forEach(function (r) {
-    if (Date.now() - start > 4 * 60000) return; // the next run carries on
-    var ids = [];
+    if (r.kind === 'people' || Date.now() - start > 4 * 60000) return; // the next run carries on
+    if (r.label && !byName[r.label]) return; // a colleague card's label, deleted in Gmail: nothing of it to archive
+    var ids = [], on = r.label ? { labelIds: [byName[r.label]] } : {};
     r.queries.forEach(function (q) {
-      var qs = S.laterQueries(r, q), fresh = listThreads_({ q: qs[1] }).map(function (t) { return t.id; });
-      ids = ids.concat(S.laterIds(listThreads_({ q: qs[0] }).map(function (t) { return t.id; }), fresh.concat(ids)));
+      var qs = S.laterQueries(r, q), fresh = listThreads_(Object.assign({ q: qs[1] }, on)).map(function (t) { return t.id; });
+      ids = ids.concat(S.laterIds(listThreads_(Object.assign({ q: qs[0] }, on)).map(function (t) { return t.id; }), fresh.concat(ids)));
     });
     ids.forEach(function (t) { modifyThread_(t, { addLabelIds: [], removeLabelIds: ['INBOX'] }, { log: {} }); });
     var l = (log[r.id] || []).filter(function (x) { return now - x[0] < 14 * 864e5; });
@@ -405,6 +412,44 @@ function runLater() {
   Object.keys(log).forEach(function (k) { if (!rules.some(function (r) { return r.id === k; })) delete log[k]; });
   PROPS.setProperty('laterLog', JSON.stringify(log));
   if (Date.now() - start < 60000) runAuto_(start); // a long archiving hour leaves the read for the next one: Apps Script stops a run at 6 min
+}
+
+// ---------- the colleague cards (rules.js peopleRules): Gmail search can't say "nobody else is on it" ----------
+// Threads with mail since the last run (an hour's margin) that one of you wrote, plus those carrying a label a rule may
+// take off, are read as a read does (threads.get) and changed per rules.js peopleChanges. Each change joins the last
+// Apply's record, so its undo takes it back. `peopleAt`: when the last full run started (setLater_ starts it).
+function runPeople_(rules, log, start, now) {
+  if (getBlob_('scan', null) || CACHE.get('apply.m.n') || CACHE.get('auto') || readRecord_().undo) return; // yours is running: the next hour catches up
+  var R = LabelboardRules, me = Session.getActiveUser().getEmail().toLowerCase(), names = labelNames_(), ids = {}, who = {}, cand = {};
+  Object.keys(names).forEach(function (id) { ids[names[id]] = id; });
+  var adopted = readIds_('adoptedLabels'), owned = readIds_('ownedLabels').filter(function (id) { return adopted.indexOf(id) < 0; }).map(function (id) { return names[id]; }).filter(Boolean);
+  var after = 'after:' + Math.floor(Number(PROPS.getProperty('peopleAt') || now) / 1000 - 3600), put = function (list) { list.forEach(function (t) { cand[t.id] = 1; }); };
+  rules.forEach(function (r) { r.firm.concat(r.me).forEach(function (a) { who[a] = 1; }); });
+  put(listThreads_({ q: after + ' {' + Object.keys(who).map(function (a) { return 'from:' + a; }).join(' ') + '}' }));
+  rules.forEach(function (r) { r.solo.forEach(function (l) { if (ids[l]) put(listThreads_({ q: after, labelIds: [ids[l]] })); }); });
+  var lid = function (n) { return /^(INBOX|UNREAD|STARRED|IMPORTANT)$/.test(n) ? n : ids[n]; }, sys = function (n) { return lid(n) === n; };
+  var rec = readRecord_(), e = rec.applies[rec.applies.length - 1], got = {}, changed = false, full = Object.keys(cand).every(function (id) {
+    if (Date.now() - start > 3 * 60000) return false; // the rest waits for the next hour, from the same mark
+    var t = threadRecord_(id, me, names), ch = t && R.peopleChanges(rules, t, owned), body = ch && { addLabelIds: ch.add.map(lid).filter(Boolean), removeLabelIds: ch.remove.map(lid).filter(Boolean) };
+    if (!body || !body.addLabelIds.length && !body.removeLabelIds.length) return true;
+    modifyThread_(id, body, { log: {} }); changed = true;
+    rules.forEach(function (r) { if (r.labels.some(function (l) { return ch.add.indexOf(l) >= 0; })) got[r.id] = (got[r.id] || 0) + 1; });
+    if (e) {
+      var to = function (o, k) { o[k] = o[k] || []; if (o[k].indexOf(id) < 0) o[k].push(id); };
+      ch.add.forEach(function (l) { if (!sys(l) && ids[l]) to(e.labelled, l); });
+      ch.remove.forEach(function (l) { if (!sys(l)) to(e.unlabeled, l); });
+      if (ch.remove.indexOf('INBOX') >= 0) to(e, 'archived');
+      if (ch.remove.indexOf('UNREAD') >= 0) to(e, 'read');
+    }
+    return true;
+  });
+  if (e && changed) try { saveRecord_(rec); } catch (err) {} // storage full: the labels stay, only their undo is lost
+  if (full) PROPS.setProperty('peopleAt', String(now));
+  rules.forEach(function (r) {
+    var l = (log[r.id] || []).filter(function (x) { return now - x[0] < 14 * 864e5; });
+    if (got[r.id]) l.push([now, got[r.id]]);
+    if (l.length) log[r.id] = l; else delete log[r.id];
+  });
 }
 
 // ---------- on its own (Settings → Runs on its own): read what changed every 6 hours, then maybe apply ----------
@@ -628,13 +673,14 @@ function summary_(log, plan) {
     e.threadIds.forEach(function (t) { sorted[t] = 1; if (e.archive) gone[t] = 1; });
     if (e.read) (e.unread || e.threadIds).forEach(function (t) { read[t] = 1; });
   });
-  var n = Object.keys(sorted).length, out = Object.keys(gone).length, nr = Object.keys(read).length, later = (plan.later || []).length;
+  var n = Object.keys(sorted).length, out = Object.keys(gone).length, nr = Object.keys(read).length, later = (plan.later || []).filter(function (r) { return r.kind !== 'people'; }).length;
   return [log.labelsCreated && log.labelsCreated + ' labels created', log.labelsRecolored && log.labelsRecolored + ' recoloured',
     log.labelsMoved && log.labelsMoved + ' labels moved', log.labelsDeleted && log.labelsDeleted + ' old labels deleted',
     log.kept && log.kept.length + ' kept because they still hold mail or labels',
     log.skipped && log.skipped.length + ' not moved (' + log.skipped.join(', ') + '): read again and review', log.filtersCreated && log.filtersCreated + ' filters created',
     log.filtersRemoved && log.filtersRemoved + ' old filters removed', log.filtersLeftOut && log.filtersLeftOut + ' filters left out (deleted in Gmail)',
     n && n + ' threads sorted', out && out + ' left the inbox', nr && nr + ' marked read', later && 'archiving later for ' + later + (later === 1 ? ' column or card' : ' columns and cards') + ', checked every hour',
+    (plan.later || []).some(function (r) { return r.kind === 'people'; }) && 'colleague mail labelled every hour',
     log.missing && log.missing + ' no longer existed']
     .filter(Boolean).join(', ') || 'Nothing to change';
 }
