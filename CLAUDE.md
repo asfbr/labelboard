@@ -63,3 +63,5 @@ and voice for UI strings: `docs/BRAND.md`. Formerly mailboard (renamed Oct 2026)
 - `docs/BRAND.md` — name, mark (`docs/brand/*.svg`), voice rules for every UI string, tagline.
 - `docs/DESIGN.md` — design system: tokens, type, the tag card, columns, motion. Restyles follow it.
 - `docs/CLAUDE-PROSE.md` — long-form rationale that doesn't fit a code comment (create when needed).
+- `docs/decisions/` — the mocked decision pages, one HTML per decision session (`YYYY-MM-DD-topic.html`),
+  pointed to from the ROADMAP's ✔ line. Demo names only; it's in the repo, so `check-names` covers it.

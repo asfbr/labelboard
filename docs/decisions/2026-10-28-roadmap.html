@@ -1,0 +1,512 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Labelboard roadmap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,600..800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --board: #ecebf1; --surface: #ffffff; --raised: #e3e1ea; --ink: #1d2230; --muted: #5d5970;
+  --rule: #d3d0de; --hatch: #bdb8cc; --accent: #6247d6; --on-accent: #ffffff; --danger: #b3261e; --claude: #b4532a;
+  --shadow: 0 1px 0 rgba(40,30,80,.07), 0 3px 8px rgba(40,30,80,.07);
+  --font: 'Atkinson Hyperlegible', system-ui, sans-serif; --display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --c1: #4a86e8; --c2: #999999; --c3: #fad165; --c4: #f691b2; --c5: #5b5670;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --board: #16141c; --surface: #24212d; --raised: #1d1b25; --ink: #f1efe9; --muted: #a29cb6;
+  --rule: #36323f; --hatch: #4a4558; --accent: #a896ff; --on-accent: #15131c; --danger: #ff8a80; --claude: #f0a07e;
+  --shadow: 0 1px 0 rgba(0,0,0,.35); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --board: #16141c; --surface: #24212d; --raised: #1d1b25; --ink: #f1efe9; --muted: #a29cb6;
+  --rule: #36323f; --hatch: #4a4558; --accent: #a896ff; --on-accent: #15131c; --danger: #ff8a80; --claude: #f0a07e;
+  --shadow: 0 1px 0 rgba(0,0,0,.35); color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--board); color: var(--ink); font: 15px/1.45 var(--font); }
+main { max-width: 1240px; margin: 0 auto; padding: 28px 16px 60px; }
+h1 { font: 800 34px/1.1 var(--display); letter-spacing: -.03em; margin: 0 0 6px; }
+h2 { font: 800 24px/1.15 var(--display); letter-spacing: -.02em; margin: 44px 0 6px; }
+h3 { font: 700 17px/1.2 var(--display); margin: 0 0 4px; }
+p { margin: 0 0 8px; }
+.lede { color: var(--muted); max-width: 760px; }
+.muted { color: var(--muted); }
+small, .sm { font-size: 13px; }
+.xs { font-size: 12px; }
+.mono { font-family: var(--mono); font-size: 12px; }
+.acc { color: var(--accent); }
+b.n { font: 800 1em var(--display); }
+
+/* journey map */
+.map { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.lane { background: var(--raised); border-radius: 14px; padding: 10px; }
+.lane h4 { margin: 0 0 8px; font: 700 13px/1.2 var(--display); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.chip { display: flex; gap: 6px; align-items: center; background: var(--surface); border-radius: 8px; padding: 5px 7px; margin-bottom: 5px; font-size: 12.5px; line-height: 1.25; }
+.chip .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.now { background: var(--accent); }
+.next { border: 2px solid var(--accent); }
+.later { border: 2px dashed var(--hatch); }
+.chip .sz { margin-left: auto; color: var(--muted); font-size: 11px; }
+.chip .bx { font: 700 10px/15px var(--font); border-radius: 99px; padding: 0 5px; background: var(--ink); color: var(--board); flex: none; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 12.5px; color: var(--muted); align-items: center; }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+
+/* options */
+.opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.opts.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.opt { background: var(--surface); border-radius: 16px; padding: 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; border: 2px solid transparent; }
+.opt.rec { border-color: var(--accent); }
+.opt .tag { display: inline-block; font: 700 12px/20px var(--font); border-radius: 99px; padding: 0 9px; background: var(--raised); }
+.opt.rec .tag { background: var(--accent); color: var(--on-accent); }
+.opt ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
+.pc { font-size: 13px; display: grid; gap: 3px; }
+.pc div::before { font-weight: 700; margin-right: 4px; }
+.pro::before { content: '+'; color: var(--accent); }
+.con::before { content: '−'; color: var(--danger); }
+
+/* mock frames */
+.mock { background: var(--board); border: 1px solid var(--rule); border-radius: 12px; padding: 10px; font-size: 12px; position: relative; overflow: hidden; }
+.mock .cap { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 6px; display: block; }
+.mock .new { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: 6px; }
+.stack { display: grid; gap: 8px; }
+.card { background: var(--surface); padding: 6px 8px 6px 26px; position: relative; border-radius: 0 6px 6px 0;
+  clip-path: polygon(10px 0, 100% 0, 100% 100%, 10px 100%, 0 calc(50% + 7px), 0 calc(50% - 7px)); margin-bottom: 5px; }
+.card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 17px; background: var(--band, var(--hatch)); }
+.card::after { content: ''; position: absolute; left: 7px; top: calc(50% - 2px); width: 4px; height: 4px; border-radius: 50%; background: var(--surface); }
+.card.mine { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.card.sel { box-shadow: inset 0 0 0 2.5px var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.card .t { font-weight: 700; display: flex; gap: 6px; font-size: 12.5px; }
+.card .t span:last-child { margin-left: auto; font-family: var(--display); }
+.card .k { color: var(--muted); font-size: 11px; }
+.who { display: inline-block; font: 700 10px/14px var(--font); padding: 0 5px; border-radius: 99px; border: 1px solid var(--accent); color: var(--accent); margin-right: 4px; }
+.colhead { display: flex; align-items: center; gap: 6px; font: 700 14px/1.2 var(--display); }
+.colhead .d { width: 10px; height: 10px; border-radius: 50%; }
+.colhead .more { margin-left: auto; color: var(--muted); border: 1px solid var(--rule); border-radius: 99px; padding: 0 7px; font-size: 13px; background: var(--surface); }
+.lbl { display: inline-block; border-radius: 99px; padding: 0 7px; font: 700 10.5px/17px var(--font); color: #1d2230; }
+.menu { background: var(--surface); border-radius: 10px; box-shadow: 0 8px 22px rgba(30,20,60,.18); padding: 5px; font-size: 12px; width: 170px; }
+.menu div { padding: 4px 8px; border-radius: 6px; }
+.menu div:hover { background: var(--raised); }
+.menu hr { border: 0; border-top: 1px solid var(--rule); margin: 4px 0; }
+.menu .dg { color: var(--danger); }
+.bar { display: flex; height: 9px; border-radius: 99px; overflow: hidden; gap: 1px; }
+.bar i { display: block; height: 100%; }
+.hx { background-image: repeating-linear-gradient(-45deg, rgba(255,255,255,.55) 0 3px, transparent 3px 6px); }
+.pbtn { display: inline-block; background: var(--accent); color: var(--on-accent); border-radius: 99px; padding: 3px 10px; font-weight: 700; font-size: 11.5px; }
+.obtn { display: inline-block; border: 1px solid var(--rule); background: var(--surface); border-radius: 99px; padding: 2px 9px; font-size: 11.5px; }
+.panel { background: var(--surface); border-radius: 10px; padding: 9px; }
+.row { display: flex; gap: 8px; align-items: center; padding: 5px 0; border-top: 1px solid var(--rule); }
+.row:first-child { border-top: 0; }
+.av { width: 20px; height: 20px; border-radius: 50%; color: #fff; font: 700 9px/20px var(--font); text-align: center; flex: none; }
+.grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kbd { font: 700 11px/1 var(--mono); border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 5px; padding: 2px 5px; background: var(--surface); }
+.stripe { height: 4px; border-radius: 99px; background: repeating-linear-gradient(90deg, var(--accent) 0 14px, color-mix(in srgb, var(--accent) 35%, transparent) 14px 28px); }
+.hdr { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+.hdr .wm { font: 700 14px/1 var(--display); color: var(--ink); }
+.big { font: 800 22px/1.05 var(--display); letter-spacing: -.02em; }
+.match { font: 700 10px/15px var(--mono); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); border-radius: 4px; padding: 0 4px; }
+.q { font-family: var(--mono); font-size: 10.5px; background: var(--raised); border-radius: 6px; padding: 5px 7px; word-break: break-all; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* item rows */
+.items { display: grid; gap: 10px; margin-top: 12px; }
+.item { display: grid; grid-template-columns: 290px 1fr 150px; gap: 16px; background: var(--surface); border-radius: 14px; padding: 12px; align-items: center; box-shadow: var(--shadow); }
+.item .call { font: 700 12.5px/1.3 var(--font); text-align: right; }
+.call.do { color: var(--accent); }
+.call.drop { color: var(--danger); }
+.item p { font-size: 13.5px; margin: 0; }
+.area { font: 700 13px/1 var(--display); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 22px 0 0; }
+.plain { background: var(--surface); border-radius: 14px; padding: 12px 16px; box-shadow: var(--shadow); font-size: 13.5px; }
+.plain li { margin: 3px 0; }
+details { margin-top: 10px; }
+summary { cursor: pointer; font-weight: 700; }
+.answer { margin-top: 30px; background: var(--ink); color: var(--board); border-radius: 16px; padding: 16px 20px; }
+.answer b { font-family: var(--display); }
+@media (max-width: 1000px) {
+  .map { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .opts, .opts.four { grid-template-columns: 1fr; }
+  .item { grid-template-columns: 1fr; }
+  .item .call { text-align: left; }
+}
+</style>
+</head>
+<body>
+<main>
+
+<h1>What's on the roadmap, and what to do next</h1>
+<p class="lede">26 items are still open: 4 Now, 14 Next, 8 Later. 14 live checks are also owed on your real account.
+Below: the whole list on one map, three questions with a picture per option, then my call on every item. Each status was checked against the code today (no <span class="kbd">/</span> shortcut, no copy button, the read's cursor isn't kept, and so on).</p>
+
+<h2>The map</h2>
+<p class="muted sm">Grouped by the moment in a user's life with Labelboard. The letter is the session bundle from question 1.</p>
+<div class="map">
+  <div class="lane"><h4>Install</h4>
+    <div class="chip"><i class="dot now"></i>Guide fixes<span class="sz">S</span><span class="bx">c</span></div>
+    <div class="chip"><i class="dot next"></i>Smaller paste path<span class="sz">S</span><span class="bx">c</span></div>
+    <div class="chip"><i class="dot later"></i>One-link install<span class="sz">M</span></div>
+    <div class="chip"><i class="dot later"></i>Gmail add-on<span class="sz">—</span></div>
+  </div>
+  <div class="lane"><h4>First read</h4>
+    <div class="chip"><i class="dot now"></i>Estimate, then resume<span class="sz">M</span><span class="bx">c</span></div>
+    <div class="chip"><i class="dot next"></i>Big inboxes: storage wall<span class="sz">M</span><span class="bx">c</span></div>
+    <div class="chip"><i class="dot next"></i>See a finished board first<span class="sz">S</span><span class="bx">c</span></div>
+    <div class="chip"><i class="dot later"></i>Board while it reads<span class="sz">L</span></div>
+  </div>
+  <div class="lane"><h4>First sort</h4>
+    <div class="chip"><i class="dot next"></i>Merge and split on the board<span class="sz">M</span><span class="bx">b</span></div>
+    <div class="chip"><i class="dot next"></i>Column menu<span class="sz">S</span><span class="bx">b</span></div>
+    <div class="chip"><i class="dot next"></i>Multi-select<span class="sz">S</span><span class="bx">b</span></div>
+    <div class="chip"><i class="dot next"></i>Why this thread is here<span class="sz">S</span><span class="bx">b</span></div>
+    <div class="chip"><i class="dot later"></i>Phone<span class="sz">M</span></div>
+  </div>
+  <div class="lane"><h4>Review &amp; Apply</h4>
+    <div class="chip"><i class="dot next"></i>Show Gmail the rules<span class="sz">S</span></div>
+    <div class="chip"><i class="dot next"></i>Adopt all, hand back all<span class="sz">S</span></div>
+  </div>
+  <div class="lane"><h4>Daily use</h4>
+    <div class="chip"><i class="dot now"></i>Re-read on open when stale<span class="sz">S</span><span class="bx">a</span></div>
+    <div class="chip"><i class="dot now"></i>Priorities that remembers<span class="sz">S</span><span class="bx">a</span></div>
+    <div class="chip"><i class="dot next"></i>Keyboard<span class="sz">S</span><span class="bx">a</span></div>
+    <div class="chip"><i class="dot next"></i>Leaves-later in the numbers<span class="sz">S</span><span class="bx">a</span></div>
+  </div>
+  <div class="lane"><h4>Around it</h4>
+    <div class="chip"><i class="dot next"></i>Contacts editor + CSV<span class="sz">M</span></div>
+    <div class="chip"><i class="dot next"></i>More presets<span class="sz">S each</span></div>
+    <div class="chip"><i class="dot next"></i>Search without full redraw<span class="sz">S</span></div>
+    <div class="chip"><i class="dot later"></i>Landing page with the demo<span class="sz">M</span></div>
+    <div class="chip"><i class="dot later"></i>Browser extension<span class="sz">L</span></div>
+    <div class="chip"><i class="dot later"></i>Languages<span class="sz">—</span></div>
+    <div class="chip"><i class="dot later"></i>gmailctl export<span class="sz">—</span></div>
+  </div>
+</div>
+<div class="legend"><span><i class="dot now" style="width:9px;height:9px;border-radius:50%;display:inline-block"></i>Now</span><span><i class="dot next" style="width:9px;height:9px;border-radius:50%;display:inline-block"></i>Next</span><span><i class="dot later" style="width:9px;height:9px;border-radius:50%;display:inline-block"></i>Later</span><span>S an hour or two · M a session · L more than one</span></div>
+
+<!-- ========== Q1 ========== -->
+<h2>1 · What the next session builds</h2>
+<p class="muted sm">Each bundle is one or two sessions of work. Dashed outlines in the pictures are what's new.</p>
+<div class="opts">
+
+  <div class="opt rec">
+    <div><span class="tag">1a · recommended</span></div>
+    <h3>Daily use: finish session 4</h3>
+    <div class="stack">
+      <div class="mock"><span class="cap">Header, opening a board read 3 hours ago</span>
+        <div class="hdr"><span class="wm">Labelboard</span><span>418 inbox threads</span><span class="new" style="padding:0 4px;color:var(--accent)">Reading what changed…</span></div>
+        <div class="stripe" style="margin-top:6px"></div>
+      </div>
+      <div class="mock"><span class="cap">Priorities: hide a thread that isn't a priority</span>
+        <div class="panel">
+          <div class="row"><i class="av" style="background:var(--c1)">HF</i><span class="grow">Halcyon Foods · Q4 order sheet</span><span class="xs muted">3 d</span><span class="obtn new">Hide</span></div>
+          <div class="row"><i class="av" style="background:var(--c5)">MK</i><span class="grow">Mira (colleague) · Printer is fixed</span><span class="xs muted">1 d</span><span class="obtn">Hide</span></div>
+          <div class="row new" style="justify-content:space-between"><span class="xs">Leave colleagues out</span><span class="obtn" style="padding:0 10px">off</span></div>
+        </div>
+      </div>
+      <div class="two">
+        <div class="mock"><span class="cap">Press ?</span>
+          <div class="panel new xs" style="line-height:2"><span class="kbd">/</span> search<br><span class="kbd">1</span>–<span class="kbd">5</span> tabs<br><span class="kbd">Esc</span> close</div>
+        </div>
+        <div class="mock"><span class="cap">Rack, column leaving after 7 days</span>
+          <div class="xs muted">today</div>
+          <div class="bar"><i style="width:30%;background:var(--c1)"></i><i style="width:45%;background:var(--c3)"></i><i style="width:25%;background:var(--c4)" class="hx"></i></div>
+          <div class="xs muted" style="margin-top:4px">counted right</div>
+          <div class="bar new"><i style="width:30%;background:var(--c1)"></i><i style="width:20%;background:var(--c3)"></i><i style="width:25%;background:var(--c3)" class="hx"></i><i style="width:25%;background:var(--c4)" class="hx"></i></div>
+        </div>
+      </div>
+    </div>
+    <ul><li>Re-read on open when the read is over an hour old</li><li>Priorities: Hide, and a switch for colleagues</li><li>Keyboard: <span class="kbd">/</span> <span class="kbd">1</span>–<span class="kbd">5</span> <span class="kbd">?</span></li><li>Leaves-later counted as leaving</li></ul>
+    <div class="pc"><div class="pro">What you touch every day. All four are S: one session.</div><div class="pro">Closes session 4, open since 17 Oct.</div><div class="con">Nothing for a stranger installing it.</div></div>
+  </div>
+
+  <div class="opt">
+    <div><span class="tag">1b</span></div>
+    <h3>Board polish: sorting by hand</h3>
+    <div class="stack">
+      <div class="two">
+        <div class="mock"><span class="cap">Column head ⋯</span>
+          <div class="colhead"><i class="d" style="background:var(--c1)"></i>Clients<span class="more new">⋯</span></div>
+          <div class="menu" style="margin-top:6px;width:auto"><div>Rename</div><div>Colour</div><div>Fold</div><div>Accept 3 suggested</div><hr><div class="dg">Delete column…</div></div>
+        </div>
+        <div class="mock"><span class="cap">Shift-click three cards</span>
+          <div class="card sel" style="--band:var(--c3)"><div class="t"><span>tasktrack.example</span><span>22</span></div></div>
+          <div class="card sel" style="--band:var(--c3)"><div class="t"><span>buildbot.example</span><span>9</span></div></div>
+          <div class="card sel" style="--band:var(--hatch)"><div class="t"><span>Orbit alerts</span><span>6</span></div></div>
+          <div class="new xs" style="background:var(--ink);color:var(--board);border-radius:99px;padding:3px 9px;text-align:center">3 cards · drag or Shift + ← →</div>
+        </div>
+      </div>
+      <div class="mock"><span class="cap">Card drawer: why each thread is here</span>
+        <div class="panel">
+          <div class="row"><span class="grow">Re: Q4 order sheet</span><span class="match new">halcyonfoods.example</span></div>
+          <div class="row"><span class="grow">Shipping window for March</span><span class="match new">subject: Halcyon</span></div>
+        </div>
+      </div>
+      <div class="mock"><span class="cap">Card drawer: Same as…</span>
+        <div class="panel new">
+          <div class="obtn" style="display:block;border-radius:6px;margin-bottom:5px">Same as… <span class="muted">Brigh</span></div>
+          <div class="card" style="--band:var(--c1)"><div class="t"><span>Brightline</span><span>37</span></div></div>
+          <div class="xs muted">Makes a topic “Brightline” with both senders. Also: <u>split this sender out</u></div>
+        </div>
+      </div>
+    </div>
+    <ul><li>Column menu (⋯ on the head)</li><li>Multi-select</li><li>Why this thread is here</li><li>Merge and split in the drawer</li></ul>
+    <div class="pc"><div class="pro">The board is the core screen; these are the gaps you feel while sorting.</div><div class="con">M + 3×S: a full session.</div><div class="con">Matters most on the first sort; after that you move few cards.</div></div>
+  </div>
+
+  <div class="opt">
+    <div><span class="tag">1c</span></div>
+    <h3>A stranger's first hour</h3>
+    <div class="stack">
+      <div class="mock"><span class="cap">First run, after the list (seconds)</span>
+        <div class="panel">
+          <div class="big new">About 9 minutes for 1,204 threads.</div>
+          <div class="xs muted" style="margin:4px 0 6px">Leave this tab open. Close it and you can carry on.</div>
+          <div class="stripe"></div>
+        </div>
+      </div>
+      <div class="mock"><span class="cap">Reopened after closing the tab</span>
+        <div class="panel new" style="display:flex;align-items:center;gap:8px"><span class="grow">Continue reading: <b>600 of 1,204</b> done</span><span class="pbtn">Continue</span></div>
+      </div>
+      <div class="mock"><span class="cap">Big inbox (today: the read refuses to start)</span>
+        <div class="panel"><div class="sm new" style="padding:3px">Your inbox has <b>8,400</b> threads. Labelboard reads the newest 2,500. Older mail keeps its place; the filters still catch new mail like it.</div>
+        <div class="hdr" style="margin-top:6px"><span class="wm">Labelboard</span><span class="new" style="padding:0 3px">newest 2,500 of 8,400</span></div></div>
+      </div>
+      <div class="mock"><span class="cap">First run: what it asked for</span>
+        <div class="panel xs new">Read your mail's headers, never bodies · Make labels and filters · Run on its own every hour</div>
+      </div>
+    </div>
+    <ul><li>Estimate, then resume</li><li>Storage wall: read the newest 2,500</li><li>See a finished board first (permissions now, demo link with the landing page)</li><li>Smaller paste path, guide fixes</li></ul>
+    <div class="pc"><div class="pro">The repo is public since 23 Oct; this is where a stranger gives up.</div><div class="pro">Big inboxes can't use the board at all today.</div><div class="con">Two sessions. Guide fixes needs a fresh Google account walk.</div></div>
+  </div>
+</div>
+<p class="sm muted" style="margin-top:10px">My order: <b>a</b>, then <b>c</b>, then <b>b</b>. a is short and you use it daily; c is what the public repo needs; b waits until you notice the missing pieces while sorting.</p>
+
+<!-- ========== Q2 ========== -->
+<h2>2 · The 14 live checks on your real account</h2>
+<p class="muted sm">A lot has shipped that only ran on the demo, Node tests or a fake Gmail: undo, Remove everything, the Gmail tab merges, Leaves the inbox after N days, Runs on its own, colleague cards. These need you, on your mailbox.</p>
+<div class="opts">
+  <div class="opt rec">
+    <div><span class="tag">2a · recommended</span></div>
+    <h3>Each session checks what it touches</h3>
+    <div class="mock"><span class="cap">End of a session</span>
+      <div class="panel xs">
+        <div class="row"><b class="grow">Session: Daily use</b><span class="acc">built ✓</span></div>
+        <div class="row"><span class="grow">☐ Read mail again on the live board</span></div>
+        <div class="row"><span class="grow">☐ Runs on its own: header says “read on its own”</span></div>
+        <div class="row"><span class="grow">☐ Leaves the inbox after 7 days archives the right threads</span></div>
+      </div>
+    </div>
+    <div class="pc"><div class="pro">Ten minutes per session, always on the area just changed.</div><div class="con">Checks in areas no session touches (undo, Remove everything) keep waiting.</div></div>
+  </div>
+  <div class="opt">
+    <div><span class="tag">2b</span></div>
+    <h3>One check session first, no new features</h3>
+    <div class="mock"><span class="cap">A checklist page, walked together</span>
+      <div class="panel xs">
+        <div class="row"><span class="grow">☐ Apply, then Undo this Apply</span></div>
+        <div class="row"><span class="grow">☐ Merge a label in the Gmail tab, then undo</span></div>
+        <div class="row"><span class="grow">☐ Colleague cards labelled within the hour</span></div>
+        <div class="row"><span class="grow">☐ Filter drift and hand-back screens</span></div>
+        <div class="row muted"><span class="grow">… 10 more</span></div>
+      </div>
+    </div>
+    <div class="pc"><div class="pro">Clears the debt; bugs found before building on top.</div><div class="con">An hour or more of your time on your real Gmail; undo touches real mail.</div></div>
+  </div>
+  <div class="opt">
+    <div><span class="tag">2c</span></div>
+    <h3>Leave them until something breaks</h3>
+    <div class="mock"><span class="cap">The roadmap page</span>
+      <div class="panel xs muted">
+        <div class="row"><span class="grow">Live checks still owed</span><b style="color:var(--danger)">14</b></div>
+        <div class="row"><span class="grow">… and growing with each session</span></div>
+      </div>
+    </div>
+    <div class="pc"><div class="pro">No time from you.</div><div class="con">You use it daily with Runs on its own on: a bug there acts on your mail unseen.</div></div>
+  </div>
+</div>
+
+<!-- ========== Q3 ========== -->
+<h2>3 · Ideas not on the roadmap (pick any)</h2>
+<p class="muted sm">Mine, from reading the code. All but 3d use data Labelboard already has.</p>
+<div class="opts four">
+  <div class="opt">
+    <div><span class="tag">3a</span></div>
+    <h3>Mail you never read</h3>
+    <div class="mock"><span class="cap">Home: a tidy-up door</span>
+      <div class="panel">
+        <div class="sm"><b class="n">5</b> senders you leave unread</div>
+        <div class="row xs"><span class="grow">designweekly.example</span><span class="muted">22 of 24 unread</span></div>
+        <div class="row xs"><span class="grow">buildbot.example</span><span class="muted">9 of 9</span></div>
+        <div class="row xs"><span class="grow">Orbit alerts</span><span class="muted">6 of 7</span></div>
+        <div style="margin-top:6px"><span class="pbtn">Archive them after 3 days</span></div>
+      </div>
+    </div>
+    <p class="sm">Each card already gets this hint alone (<span class="mono">actionHint</span>). One list for all of them, one button. S.</p>
+  </div>
+  <div class="opt">
+    <div><span class="tag">3b</span></div>
+    <h3>What it did on its own</h3>
+    <div class="mock"><span class="cap">Home, beside the next step</span>
+      <div class="panel">
+        <div class="sm"><b>On its own since Monday</b></div>
+        <div class="row xs"><span class="grow">Read your mail</span><b>12×</b></div>
+        <div class="row xs"><span class="grow">Applied</span><b>3×, 41 threads</b></div>
+        <div class="row xs"><span class="grow">Archived after N days</span><b>88</b></div>
+        <div class="row xs"><span class="grow">Colleague labels</span><b>+19 −2</b></div>
+      </div>
+    </div>
+    <p class="sm">With reads, applies and archiving now automatic, one place that says what happened. Trust, and it doubles as a live check. S–M.</p>
+  </div>
+  <div class="opt">
+    <div><span class="tag">3c</span></div>
+    <h3>Your filters that catch nothing</h3>
+    <div class="mock"><span class="cap">Gmail tab, your filters</span>
+      <div class="panel">
+        <div class="sm"><b class="n">22</b> of your 60 filters caught nothing in 30 days</div>
+        <div class="q" style="margin:5px 0">from:(oldvendor.example)</div>
+        <div class="q" style="margin-bottom:5px">subject:(webinar 2024)</div>
+        <span class="obtn">Hand them to Labelboard to remove</span>
+      </div>
+    </div>
+    <p class="sm">Filter matching already counts per filter. Pairs with <i>Adopt all</i>; only removes after an explicit adopt. S.</p>
+  </div>
+  <div class="opt">
+    <div><span class="tag">3d</span></div>
+    <h3>Unsubscribe link</h3>
+    <div class="mock"><span class="cap">Newsletter card drawer</span>
+      <div class="panel">
+        <div class="card" style="--band:var(--c4)"><div class="t"><span>designweekly.example</span><span>24</span></div></div>
+        <span class="obtn" style="color:var(--danger);border-color:var(--danger)">Unsubscribe</span>
+      </div>
+    </div>
+    <p class="sm"><b style="color:var(--danger)">Scope flag:</b> reads one more header per message. Small, but it moves the metadata promise in the README. I'd skip it.</p>
+  </div>
+</div>
+
+<!-- ========== MY CALLS ========== -->
+<h2>My call on every open item</h2>
+<p class="muted sm">No answer needed unless you disagree. These go into <span class="mono">ROADMAP.md</span> once you've answered.</p>
+
+<div class="area">Roadmap housekeeping</div>
+<div class="items">
+  <div class="item">
+    <div class="mock"><span class="cap">Now, after the change</span>
+      <div class="chip"><i class="dot now"></i>Re-read on open<span class="sz">S</span></div>
+      <div class="chip"><i class="dot now"></i>Priorities that remembers<span class="sz">S</span></div>
+      <div class="chip" style="opacity:.5"><i class="dot next"></i>Estimate, then resume → Next<span class="sz">M</span></div>
+    </div>
+    <p>The open question <i>“Unscheduled Now items”</i>: <b>Estimate, then resume</b> moves to Next inside bundle c. <b>Guide fixes</b> moves to Next too: it can only happen on the fresh-account install walk, which is a live check.</p>
+    <div class="call do">Settle it this way</div>
+  </div>
+  <div class="item">
+    <div class="mock"><span class="cap">Gmail tab, filters column</span>
+      <div class="panel"><div class="sm"><b>Your filters · 60</b> <span class="obtn new">Adopt all</span> <span class="obtn new">Hand back all</span></div></div>
+    </div>
+    <p><b>Adopt all, hand back all</b> still says “the filters lane”. Filters moved to the Gmail tab on 28 Oct, so the buttons go at the top of its filters column.</p>
+    <div class="call do">Retarget to the Gmail tab</div>
+  </div>
+  <div class="item">
+    <div class="mock"><span class="cap">Column head today vs. with the menu</span>
+      <div class="colhead"><i class="d" style="background:var(--c4)"></i>Newsletters<span class="more">⋯</span></div>
+      <div class="obtn xs" style="margin-top:5px">Leaves right away ▾</div><span class="xs muted"> stays on the head</span>
+    </div>
+    <p><b>Column menu</b>'s list still has “skip inbox”. That's now the <i>Leaves the inbox</i> pick on the head; the menu drops it.</p>
+    <div class="call do">Shrink the brief</div>
+  </div>
+</div>
+
+<div class="area">Install and first read</div>
+<div class="items">
+  <div class="item">
+    <div class="mock"><span class="cap">dist/, no-terminal path</span>
+      <div class="q">Code.js<br>board.html<br>appsscript.json</div>
+      <div class="xs muted" style="margin-top:4px">today: 6 files</div>
+    </div>
+    <p><b>Smaller paste path.</b> Folds three server files into <span class="mono">Code.js</span> for people without a terminal.</p>
+    <div class="call do">Do, in c</div>
+  </div>
+  <div class="item">
+    <div class="mock"><span class="cap">The first run, with a demo link</span>
+      <div class="panel xs"><b>1</b> Pick a preset &nbsp; <b>2</b> Read my mail<br><u class="acc">See a finished board first →</u></div>
+    </div>
+    <p><b>See a finished board first</b> needs the hosted demo, which is <b>Landing page with the demo</b> (Later). The demo data exists; the page is one build target. I'd move the landing page to Next, right after c.</p>
+    <div class="call do">Promote landing page to Next</div>
+  </div>
+  <div class="item">
+    <div class="mock"><span class="cap">Board, half read</span>
+      <div class="card" style="--band:var(--c1);opacity:.5"><div class="t"><span>Halcyon Foods</span><span>…</span></div></div>
+    </div>
+    <p><b>Board while it reads</b>, <b>One-link install</b>, <b>Gmail add-on</b>: Later, as written. Estimate and resume take most of the pain; one-link waits on a template owner account.</p>
+    <div class="call">Keep Later</div>
+  </div>
+</div>
+
+<div class="area">Sorting, Review, daily use</div>
+<div class="items">
+  <div class="item">
+    <div class="mock"><span class="cap">Column drawer: the filter</span>
+      <div class="q">from:(halcyonfoods.example OR brightline.example) <span class="obtn new" style="float:right">Copy</span></div>
+      <div class="xs muted new" style="margin-top:4px;display:inline-block">212 of 1,500 characters</div>
+    </div>
+    <p><b>Show Gmail the rules.</b> The copy button is easy. The limits (filter count, query length) need a live check on your account first, so this rides with 2a or 2b.</p>
+    <div class="call">Next, after a live check</div>
+  </div>
+  <div class="item">
+    <div class="mock"><span class="cap">Settings → Contacts</span>
+      <div class="panel xs">
+        <div class="row"><b class="grow">Name</b><b>Match</b><b>Column</b></div>
+        <div class="row"><span class="grow">Halcyon Foods</span><span class="mono">halcyonfoods.example</span><span>Clients</span></div>
+        <div class="row"><span class="grow">Ledger &amp; Lane</span><span class="mono">ledgerlane.example</span><span>Keep</span></div>
+      </div>
+      <span class="obtn xs" style="margin-top:5px">Import Google Contacts CSV</span>
+    </div>
+    <p><b>Contacts editor and CSV import.</b> Today contacts are a count with no list, which is why Topics looks empty while cards say “In your contacts”. Natural follow-up to b.</p>
+    <div class="call">Next, after b</div>
+  </div>
+  <div class="item">
+    <div class="mock"><span class="cap">presets/</span>
+      <div class="q">basic.json · investor.json<br><span class="acc">freelancer.json · household.json</span></div>
+    </div>
+    <p><b>More presets.</b> Cheap, but each one is a guess about someone else's mail. Two (freelancer, household) with the landing page, so a visitor sees one that fits.</p>
+    <div class="call">Next, with the landing page</div>
+  </div>
+  <div class="item">
+    <div class="mock"><span class="cap">Typing in search, real board</span>
+      <div class="obtn" style="display:block;border-radius:99px">halc<span class="acc">|</span></div>
+      <div class="xs muted" style="margin-top:4px">150 ms redraw, after a 120 ms pause</div>
+    </div>
+    <p><b>Search without a full redraw.</b> 150 ms only on a 247-card board, and search already waits for you to stop typing. Not worth a session unless it feels slow to you.</p>
+    <div class="call drop">Drop unless it feels slow</div>
+  </div>
+  <div class="item">
+    <div class="mock"><span class="cap">Under 640 px</span>
+      <div style="width:90px;border:1px solid var(--rule);border-radius:10px;padding:5px;background:var(--surface)"><div class="card" style="--band:var(--c1)"><div class="t"><span>Halcyon</span></div></div></div>
+    </div>
+    <p><b>Phone</b>, <b>Browser extension</b>, <b>Languages</b>, <b>gmailctl export</b>: Later, as written. No new reason to move any.</p>
+    <div class="call">Keep Later</div>
+  </div>
+</div>
+
+<details><summary>The 14 live checks, grouped (from ROADMAP.md)</summary>
+<div class="plain" style="margin-top:8px"><ul>
+  <li><b>Reads:</b> Read mail again on the live board; a re-read without Gmail's change log (a week old); first read's progress inside the deployed board.</li>
+  <li><b>Apply and undo:</b> move a labelled card, Review, Apply; filter status after a real Apply; Undo and Remove everything; new error toasts for a failed read or Apply.</li>
+  <li><b>Filters:</b> drift and hand-back screens; the filters view on your mailbox; card actions (star, mark read, delete) read back as Labelboard's own.</li>
+  <li><b>Gmail tab and labels:</b> ~25 rows a side, a merge and a drag merge, then undo; a fold, a leftover cleared, colours, then undo; label counts on ~180 labels.</li>
+  <li><b>On its own:</b> Leaves the inbox after N days; Runs on its own reads every 6 h and applies only while nothing waits.</li>
+  <li><b>Install:</b> <span class="mono">INSTALL.md</span> walked end to end on a fresh Google account.</li>
+</ul></div></details>
+
+<details><summary>Already decided against, and gaps kept on purpose (no decision needed)</summary>
+<div class="plain" style="margin-top:8px"><ul>
+  <li>✖ Favicon logos, in-app AI read, people's photos, Drive storage, GmailApp, cheaper reads with <span class="mono">messages.get</span>: each would send data out or widen permissions, or was measured wrong.</li>
+  <li>✖ Drop-on-card merge, undo through every Apply, undo taking labels off mail caught since.</li>
+  <li>Gaps: moving a card re-sorts inbox threads only; archived mail older than 30 days isn't on the board; your own filters don't move the before/after numbers.</li>
+</ul></div></details>
+
+<div class="answer">
+  Answer like <b>1a 2a 3ab</b>. Add “no” to any of my calls you disagree with, e.g. “keep search redraw”.
+</div>
+
+</main>
+</body>
+</html>

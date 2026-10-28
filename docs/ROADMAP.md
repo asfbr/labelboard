@@ -16,59 +16,65 @@ inside an item is marked ✔ or ❓ with a date, never left in prose. When an it
 
 - ❓ **One-link install**: which Google account owns the shared template (a dedicated one, not a
   personal mailbox). Parked with going public, so no rush.
-- ❓ **Unscheduled Now items**: *Guide fixes* and *Estimate, then resume* are Now but in no session.
-  Fold them into one, or move them to Next.
 
 ## Session order
 
-✔ Decided 17 Oct 2026.
+✔ Decided 17 Oct 2026; sessions 4, 6, 7 and 8 re-cut 28 Oct from a mocked overview (1a, 2a, 3abc:
+`decisions/2026-10-28-roadmap.html`).
 
 | # | Session | Status | What's in it |
 |---|---|---|---|
 | 1 | First sort | ✅ Done 17 Oct | fit the board, triage mode, card words, accept suggestions, one scope for numbers |
 | 2 | Speed | ✅ Done 17 Oct | `buildPlan` and `buildCards` under 300 ms |
 | 3 | Trust | ✅ Done 17 Oct | undo, apply record, remove everything (filter status on the board ✅ 17 Oct) |
-| 4 | Daily use | 🟢 | re-read on open, Priorities that remembers; what changed ✅ 19 Oct (on Home) |
+| 4 | Daily use | 🟢 | re-read on open, Priorities that remembers, keyboard, leaves-later in the numbers; what changed ✅ 19 Oct (on Home) |
 | 5 | Before and after | ✅ Done 28 Oct | the before → after strip and Flow you drag in ✅ 19 Oct; the Gmail tab ✅ 28 Oct |
+| 6 | A stranger's first hour | 🔵 | estimate then resume, the storage wall, see a finished board first, smaller paste path, guide fixes |
+| 7 | Landing page | 🔵 | the hosted demo, the first-run link to it, two more presets |
+| 8 | Sorting by hand | 🔵 | column menu, multi-select, why this thread is here, merge and split on the board |
 
-✔ The repo is open (19 Oct 2026, history in `CHANGELOG.md`). The landing page and one-link install have
-no date and stay Later.
+✔ 28 Oct: every session ends with the *Live checks still owed* of the areas it touched, on the real account.
+
+✔ The repo is open (19 Oct 2026, history in `CHANGELOG.md`). One-link install has no date and stays
+Later; the landing page is session 7 (28 Oct).
 
 ## At a glance
 
 | Item | Area | Status | Size | Session | Decision / flags |
 |---|---|---|---|---|---|
-| Guide fixes | Install | 🟢 Now | S | — | |
-| Estimate, then resume | First read | 🟢 Now | M | — | |
 | Re-read on open when stale | Daily use | 🟢 Now | S | 4 | |
 | Priorities that remembers | Daily use | 🟢 Now | S | 4 | |
-| Big inboxes: the storage wall | First read | 🔵 Next | M | — | ✔ cap at newest 2,500, no Drive |
-| Smaller paste path | Install | 🔵 Next | S | — | |
-| See a finished board first | First read | 🔵 Next | S | — | needs the hosted demo |
-| Merge and split on the board | First sort | 🔵 Next | M | — | ✔ no drop-on-card merge |
-| Column menu | First sort | 🔵 Next | S | — | |
-| Multi-select | First sort | 🔵 Next | S | — | |
-| Why this thread is here | First sort | 🔵 Next | S | — | |
-| Show Gmail the rules | Review and Apply | 🔵 Next | S | — | |
-| Keyboard | Daily use | 🔵 Next | S | — | |
-| Contacts editor and CSV import | Integrations | 🔵 Next | M | — | |
-| Adopt all, hand back all | Integrations | 🔵 Next | S | — | |
-| More presets | Integrations | 🔵 Next | S each | — | |
+| Keyboard | Daily use | 🟢 Now | S | 4 | |
+| Leaves-later in the numbers | Daily use | 🟢 Now | S | 4 | |
+| Estimate, then resume | First read | 🔵 Next | M | 6 | |
+| Big inboxes: the storage wall | First read | 🔵 Next | M | 6 | ✔ cap at newest 2,500, no Drive |
+| See a finished board first | First read | 🔵 Next | S | 6, 7 | the permissions in 6, the demo link in 7 |
+| Smaller paste path | Install | 🔵 Next | S | 6 | |
+| Guide fixes | Install | 🔵 Next | S | 6 | needs the fresh-account install walk |
+| Landing page with the demo | Integrations | 🔵 Next | M | 7 | ✔ Later → Next (28 Oct) |
+| More presets | Integrations | 🔵 Next | S each | 7 | ✔ two first, `freelancer` and `household` (28 Oct) |
+| Merge and split on the board | First sort | 🔵 Next | M | 8 | ✔ no drop-on-card merge |
+| Column menu | First sort | 🔵 Next | S | 8 | |
+| Multi-select | First sort | 🔵 Next | S | 8 | |
+| Why this thread is here | First sort | 🔵 Next | S | 8 | |
+| Mail you never read | Daily use | 🔵 Next | S | — | ✔ 28 Oct (3a) |
+| What it did on its own | Daily use | 🔵 Next | M | — | ✔ 28 Oct (3b) |
+| Your filters that catch nothing | Review and Apply | 🔵 Next | S | — | ✔ 28 Oct (3c) |
+| Show Gmail the rules | Review and Apply | 🔵 Next | S | — | limits need a live check first |
+| Adopt all, hand back all | Review and Apply | 🔵 Next | S | — | ✔ on the Gmail tab (28 Oct) |
+| Contacts editor and CSV import | Integrations | 🔵 Next | M | — | after 8 |
 | Browser extension or Claude in Chrome | Integrations | ⚪ Later | L | — | ✔ only if the brief and the skill fall short (19 Oct) · Data out |
-| Search without a full redraw | Speed | 🔵 Next | S | — | |
 | The Gmail tab (Flow, Filters, Labels as one) | Before and after | ✅ Done 28 Oct | L | 5 | ✔ 28 Oct: filters → bands → labels (2a) |
 | Inbox tab (Overview, All threads as one) | Before and after | ✅ Done 28 Oct | S | — | ✔ 28 Oct: five tabs (1b) |
 | Merge any label of yours into any label | Before and after | ✅ Done 28 Oct | M | — | ✔ 28 Oct: menu with lookalikes, and drag (3a + 3b) |
 | Leaves the inbox per column | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: one menu, cards follow |
 | Runs on its own: read, then apply | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: both opt-in (4c) |
-| Leaves-later in the numbers | Daily use | 🔵 Next | S | — | |
 | Only colleagues on it (hourly, no filter) | Daily use | ✅ Done 28 Oct | M | — | ✔ 28 Oct: two colleague cards, labelled hourly |
 | Folder map (the Labels tab) | Before and after | ✅ Done 26 Oct | M | — | ✔ own tab, with hand-over (26 Oct); in the Gmail tab since 28 Oct |
 | One-link install | Install | ⚪ Later | M | — | ❓ template owner |
 | Gmail add-on | Install | ⚪ Later | — | — | needs Marketplace verification |
 | Board while it reads | First read | ⚪ Later | L | — | |
 | Phone | First sort | ⚪ Later | M | — | ✔ laptop first |
-| Landing page with the demo | Integrations | ⚪ Later | M | — | |
 | Languages | Integrations | ⚪ Later | — | — | |
 | gmailctl export | Integrations | ⚪ Later | — | — | only if asked |
 
@@ -190,9 +196,9 @@ it lives.
 Today: Node, clasp, the Apps Script API switch, two consent screens and the "unverified app" warning,
 or a six-file paste. The heaviest step for a product aimed at anyone with Gmail.
 
-- **Guide fixes** · 🟢 Now · S. A screenshot of the "unverified app" screen with the two clicks
+- **Guide fixes** · 🔵 Next · S · session 6. A screenshot of the "unverified app" screen with the two clicks
   marked, taken on the fresh-account install walk (the `/exec` bookmark note ✅ 19 Oct).
-- **Smaller paste path** · 🔵 Next · S. A build target that folds `Sync.js`, `Presets.js` and
+- **Smaller paste path** · 🔵 Next · S · session 6. A build target that folds `Sync.js`, `Presets.js` and
   `Baked.js` into `Code.js`, so the no-terminal path is two files plus the manifest.
   `dev/build.mjs --single`. The release zip of `dist/` ✅ 19 Oct: `.github/workflows/release.yml`
   on a `v*` tag, notes taken from `CHANGELOG.md`.
@@ -211,12 +217,12 @@ or a six-file paste. The heaviest step for a product aimed at anyone with Gmail.
 Today: pick a preset, click *Read my mail*, wait with no estimate (the "7 minutes per 1,000 threads"
 line lives only in `INSTALL.md`), and lose the run if the tab closes.
 
-- **Estimate, then resume** · 🟢 Now · M. *Read my mail* first lists (seconds), then says "About 9
+- **Estimate, then resume** · 🔵 Next · M · session 6. *Read my mail* first lists (seconds), then says "About 9
   minutes for 1,204 threads. Leave this tab open." The slice cursor lives only in the page today, so a
   closed tab starts over even though the `scan` blob survives 6 h. Keep the cursor in that blob and, on
   reopen, offer "Continue reading: 600 of 1,204 done". `Code.js scanInbox`, `adapter-gas.js refresh`,
   the first-run screen in `settings.js`.
-- **Big inboxes: the storage wall** · 🔵 Next · M · ✔ cap, no Drive (17 Oct). Measured on the real
+- **Big inboxes: the storage wall** · 🔵 Next · M · session 6 · ✔ cap, no Drive (17 Oct). Measured on the real
   snapshot: 160 bytes per thread compressed, so the 500 KB of user properties fits about 2,900 inbox
   threads on its own; settings, contacts, owned filters and the window share that space, so the real
   ceiling is lower. The stopgap is done (see Done); those users still can't use the board. Done when
@@ -225,9 +231,9 @@ line lives only in `INSTALL.md`), and lose the run if the tab closes.
   still catch new mail like it." The cap comes from a pure `LabelboardSync` function (bytes per thread
   with margin, tested), the read never throws on storage, and the header shows "newest 2,500 of 8,400".
   Slimming records (snippet 160 → 100 chars) buys about 15%: only if it falls out of this.
-- **See a finished board first** · 🔵 Next · S. The first-run screen links to the demo, once hosted
-  (Integrations), so the user knows what the wait buys. Also show the three permissions it asked for,
-  in the same words as `INSTALL.md`, so the consent screen isn't the last time they are explained.
+- **See a finished board first** · 🔵 Next · S · sessions 6 and 7. Session 6: show the three permissions
+  it asked for, in the same words as `INSTALL.md`, so the consent screen isn't the last time they are
+  explained. Session 7: the first-run screen links to the hosted demo, so the user knows what the wait buys.
 - **Board while it reads** · ⚪ Later · L. Render kept plus fetched-so-far threads during the read. The
   estimate and resume cover most of the pain; only do this if first reads stay long.
 
@@ -236,15 +242,16 @@ line lives only in `INSTALL.md`), and lose the run if the tab closes.
 Still open after session 1: on a phone the header meta wraps to five lines before the first button.
 Not yet seen on the deployed board: the new error toasts for a failed read or Apply.
 
-- **Merge and split on the board** · 🔵 Next · M · ✔ no drop-on-card merge (too easy to trigger while
+- **Merge and split on the board** · 🔵 Next · M · session 8 · ✔ no drop-on-card merge (too easy to trigger while
   moving a card). In the card drawer, *Same as…* opens a search list of cards; picking one creates or
   extends a topic with both terms. Also in the drawer: "split this sender out of this card". Today this
   only exists in Settings → Topics, which shows empty while seven cards say "In your contacts",
   because contacts aren't editable (Integrations).
-- **Column menu** · 🔵 Next · S. The colour stamp opens Settings; a ⋯ on the column head should offer
-  rename, colour, skip inbox, fold, accept suggestions, delete, in place.
-- **Multi-select** · 🔵 Next · S. Shift-click cards, then drag or Shift + ← → moves them together.
-- **Why this thread is here** · 🔵 Next · S. Each thread row in the drawer names the term that matched
+- **Column menu** · 🔵 Next · S · session 8. The colour stamp opens Settings; a ⋯ on the column head
+  should offer rename, colour, fold, accept suggestions, delete, in place. *Leaves the inbox* stays its
+  own pick on the head (since 28 Oct).
+- **Multi-select** · 🔵 Next · S · session 8. Shift-click cards, then drag or Shift + ← → moves them together.
+- **Why this thread is here** · 🔵 Next · S · session 8. Each thread row in the drawer names the term that matched
   (hover or a small line), using `termMatches`.
 - **Phone** · ⚪ Later · M · ✔ laptop first; triage already works at phone width. Under 640 px: header
   meta in one line with a tap for the rest, rack numbers in one row, and a card tap that leads with the
@@ -258,12 +265,18 @@ can be undone, and the ⋯ menu removes everything Labelboard made (Done, 17 Oct
 - **Show Gmail the rules** · 🔵 Next · S. Each filter's search now shows in its column's filter drawer
   (from the column head or the *Gmail filters* lane); left: a copy button. Check Gmail's filter count and query-length
   limits live and show "n of the limit" if there is one (`ARCHITECTURE.md` lists this as unchecked).
+- **Your filters that catch nothing** · 🔵 Next · S · ✔ 28 Oct. The Gmail tab's filters column says
+  "22 of your 60 filters caught nothing in the last 30 days" and dims those rows, from the per-filter
+  matches it already counts. *Hand them to Labelboard* goes through adopt, so removing one is still an
+  explicit pick; nothing of yours is touched before. Pairs with *Adopt all*.
+- **Adopt all, hand back all** · 🔵 Next · S · ✔ on the Gmail tab (28 Oct). Two buttons at the top of
+  the Gmail tab's filters column, for people with 60 filters.
 
 ### Before and after
 
 Board, the pane under it and the Gmail tab answer where mail ends up and why (Done, 28 Oct).
 
-- **Leaves-later in the numbers** · 🔵 Next · S. A column that leaves the inbox after N days counts as
+- **Leaves-later in the numbers** · 🟢 Now · S · session 4. A column that leaves the inbox after N days counts as
   staying in the rack and Home ("stay after you apply"), which is true on the day you apply but not a week
   later. Count threads older than N days as leaving, hatched like right away; `rules.js threadPlace`.
 
@@ -278,17 +291,25 @@ back to, and it has no memory between visits.
 - **Priorities that remembers** · 🟢 Now · S. "Hide" on a waiting thread (a local list, cleared when
   the thread gets a new message) and a switch, off by default, to leave colleagues out ("Printer is
   fixed" is not a priority). Pace and view already persist in `config.ui`.
-- **Keyboard** · 🔵 Next · S. `/` focuses search, `1`–`5` switch views, `?` lists the shortcuts, Esc
-  already closes everything.
+- **Keyboard** · 🟢 Now · S · session 4. `/` focuses search, `1`–`5` switch views, `?` lists the
+  shortcuts, Esc already closes everything.
+- **Mail you never read** · 🔵 Next · S · ✔ 28 Oct. One list of the cards whose mail you leave unread
+  (the test `rules.js actionHint` already runs per card: mostly machine senders, most of it unread), as
+  a door on Home, with one button that sets *archive 3 days after it arrives* on each of those cards.
+- **What it did on its own** · 🔵 Next · M · ✔ 28 Oct. With reads, applies, archiving and colleague
+  labels automatic, Home says what they did since you last looked: reads, applies (threads), archived
+  after N days, colleague labels added and taken off. Needs a small capped run log on the server
+  (archiving later already keeps 14 days); counts only, no mail.
 
 ### Integrations and sharing
 
-- **Contacts editor and CSV import** · 🔵 Next · M. Contacts show as a count with no list. A table in
-  Settings (name, match, value, column, role) and an import of a Google Contacts CSV export, scope-free.
-- **Adopt all, hand back all** · 🔵 Next · S. Two buttons on the filters lane for people with 60 filters.
-- **More presets** · 🔵 Next · S each. `freelancer`, `job-search`, `household`, `small-shop` in
-  `presets/`, each with a line in the README. A preset is a JSON file; the first-run screen already lists them.
-- **Landing page with the demo** · ⚪ Later · M. A `dev/build.mjs --static <demo dir>` target inlines
+- **Contacts editor and CSV import** · 🔵 Next · M · after session 8. Contacts show as a count with no
+  list. A table in Settings (name, match, value, column, role) and an import of a Google Contacts CSV
+  export, scope-free.
+- **More presets** · 🔵 Next · S each · session 7 · ✔ two first (28 Oct). `freelancer` and `household`
+  with the landing page; `job-search`, `small-shop` if asked. Each in `presets/` with a line in the
+  README. A preset is a JSON file; the first-run screen already lists them.
+- **Landing page with the demo** · 🔵 Next · M · session 7 · ✔ Later → Next (28 Oct). A `dev/build.mjs --static <demo dir>` target inlines
   the demo state with a no-op adapter into one HTML file; the README and the first-run screen link to
   it. The demo data exists.
 - **Browser extension or Claude in Chrome** · ⚪ Later · L. An extension needs the Chrome Web Store and
@@ -310,8 +331,7 @@ contacts, 1,200 AI votes, 12 columns) and the demo (421 threads, 32 cards):
 | `buildPlan` | 18 ms (was 3.7 s, 270 ms before session 2) | — | every Review open |
 | `renderBoard` | 150 ms | 22 ms | every search keystroke, every move |
 | `stats`, views (`flow`, `overview`, `priorities`, `grid`) | 3–18 ms | — | fine |
-- **Search without a full redraw** · 🔵 Next · S. The redraw could cover only the card wells, not the
-  heads and the lane.
+
 - **First read** · ✔ no change. Bound by Gmail's per-minute quota: 1,200 threads ≈ 9 min.
   `messages.get` and GmailApp were measured and rejected (`CLAUDE-PROSE.md`). The estimate, the resume
   and the cap are the only levers left.
@@ -376,5 +396,9 @@ On the real account, before touching that area.
 - ✖ Drop-on-card merge (17 Oct): too easy to trigger while moving a card to a column.
 - ✖ Undo back through every Apply, one at a time (17 Oct): a later Apply already fixes older board
   mistakes, and *Remove everything* is the way out.
+- ✖ Search without a full redraw (28 Oct): 150 ms on a 247-card board, after search's 120 ms typing
+  pause. Back on the list only if it feels slow.
+- ✖ An unsubscribe link on newsletter cards (28 Oct): reads one more header per message, which moves the
+  metadata promise in the README.
 - ✖ Undo taking labels off mail the new filters caught since (17 Oct): it can't be told from a label
   you added by hand. That mail comes back to the inbox with its label instead.
